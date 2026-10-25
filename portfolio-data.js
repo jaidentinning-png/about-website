@@ -11,7 +11,7 @@ window.portfolioProfile = {
     whatIDo: [
         "Web development",
         "Creative coding",
-        "UI and frontend design"
+        "UI and frontend design",
         "Backend development"
     ],
     skills: [
