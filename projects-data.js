@@ -2,7 +2,7 @@
 // Put project covers in assets/images/, then use "assets/images/filename.png".
 window.portfolioProjects = [
     { enabled: true, name: "xenfire AI", cover: "assets/images/xenfire.png", link: "https://xenfire-ai.web.app/dashboard.html", description: "This was an old project I made. It was going to be an AI chatbot, but I shut it down due to lack of funds." },
-    { enabled: false, name: "test", cover: "assets/images/xenfire.png", link: "https://xenfire-ai.web.app/dashboard.html", description: "This was an old project I made." },
+    { enabled: true, name: "DJ bust a nut music", cover: "assets/images/djbustanutmusic.png", link: "https://dj-bust-a-nut.web.app/#music", description: "This was a site i made while i was just bored, + my friend wanted me to make it for him..." },
     { enabled: false, name: "Project 03", cover: "assets/images/project-placeholder.png", link: "https://example.com", description: "Add a project description here." },
     { enabled: false, name: "Project 04", cover: "assets/images/project-placeholder.png", link: "https://example.com", description: "Add a project description here." },
     { enabled: false, name: "Project 05", cover: "assets/images/project-placeholder.png", link: "https://example.com", description: "Add a project description here." },
