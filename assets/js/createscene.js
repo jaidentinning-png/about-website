@@ -18,7 +18,7 @@ var engine = new BABYLON.Engine(canvas, true); // Generate the BABYLON 3D engine
 var createScene = function() {
   
     var scene = new BABYLON.Scene(engine);
-    scene.clearColor = new BABYLON.Color3(1, 1, 1);
+    scene.clearColor = new BABYLON.Color3(0, 0, 0);
   
     return scene;
 }
