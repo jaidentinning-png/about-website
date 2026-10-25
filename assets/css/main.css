@@ -157,6 +157,39 @@ html, body, a, button {
   font-size:calc(.5rem + 3.6vmin);
 }
 
+#entryMenu {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2.5vh;
+  color: #fff;
+  background: #000;
+}
+
+#entryMenu[hidden] {
+  display: none;
+}
+
+.entryTitle {
+  margin-bottom: 4vh;
+  font: 400 calc(2rem + 5vmin) "megrim", cursive;
+}
+
+.entryLink {
+  border: 0;
+  padding: 0;
+  color: #fff;
+  background: transparent;
+  font: 400 calc(1.6rem + 4vmin) "megrim", cursive;
+}
+
+.entryLink:hover {
+  color: #aaa;
+}
+
 a:active,a:link,a:visited {
   color: #fff;
   text-decoration: none;

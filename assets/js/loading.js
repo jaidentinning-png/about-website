@@ -36,13 +36,18 @@ function loadPage() {
 
 function showPage() {
     document.getElementById("loading").style.display = "none";
+    document.getElementById("entryMenu").hidden = false;
+
+    // Reset the loading click handlers so only the new menu controls navigation.
+    document.ontouchstart = function(){}
+    document.onclick = function(){}
+}
+
+function showMain() {
+    document.getElementById("entryMenu").hidden = true;
     document.getElementById("canvas").style.opacity = 1;
     document.getElementById("menu").style.display = "block";
     startAnimation();
-
-    // Reset onclick functions to nothing
-    document.ontouchstart = function(){}
-    document.onclick = function(){}
 }
 
 function pullCDN() {
