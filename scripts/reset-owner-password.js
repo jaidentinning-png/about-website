@@ -73,6 +73,7 @@ SET password_hash = '${passwordHash}', must_change_password = FALSE
 WHERE role_id = 'owner';
 DELETE FROM sessions
 WHERE user_id IN (SELECT id FROM users WHERE role_id = 'owner');
+DELETE FROM login_attempts;
 COMMIT;`;
 }
 

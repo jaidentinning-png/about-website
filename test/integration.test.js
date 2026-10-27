@@ -145,7 +145,7 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   const appScriptText = await appScript.text();
   assert.match(appScriptText, /documents:\s*renderDocuments/);
   assert.match(appScriptText, /"todo-list":\s*renderTodoList/);
-  assert.match(appScriptText, /The portal backend is not connected to this site/);
+  assert.match(appScriptText, /This portal API route returned 404/);
   const markdownScript = await request(base, "/todo-markdown.js?v=1");
   assert.equal(markdownScript.status, 200);
   assert.match(homepageHtml, /todo-markdown\.js\?v=1/);

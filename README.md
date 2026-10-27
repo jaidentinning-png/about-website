@@ -25,7 +25,7 @@ The local server creates `data/portal.sqlite`. Keep `data/` private and backed u
 
 ## Deploy the shared site with Vercel + Neon
 
-The Vercel API uses Neon Postgres and initializes the required tables and initial Owner account on first request. No separate API host is required.
+The Vercel API uses Neon Postgres and initializes the required tables and initial Owner account on first request. Explicit Vercel function routes cover nested API paths such as task edits and bulk to-do imports. No separate API host is required.
 
 1. Import this repository into Vercel and deploy it using the default Node.js project settings.
 2. In Vercel, add the **Neon** integration from the Vercel Marketplace and connect a Neon project/database to this Vercel project. Make sure a Postgres connection string is available as `DATABASE_URL` (the API also accepts `POSTGRES_URL`).
@@ -50,7 +50,7 @@ The bootstrap password is only used when creating the first Owner; changing that
 2. Copy the generated SQL into the connected Neon project's SQL Editor and run it.
 3. Sign in using the existing Owner username and the new password.
 
-The SQL updates Owner password hashes and invalidates their sessions. It does not delete tasks, staff, payroll, documents, or to-do items. Treat the generated SQL as sensitive until it has been run.
+The SQL updates Owner password hashes, invalidates their sessions, and clears login lockout counters. It does not delete tasks, staff, payroll, documents, or to-do items. Treat the generated SQL as sensitive until it has been run.
 
 ## Roles and workflow
 

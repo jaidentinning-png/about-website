@@ -21,6 +21,7 @@ test("Owner reset creates a compatible scrypt hash and limits the SQL update to 
   assert.match(sql, /WHERE role_id = 'owner'/);
   assert.match(sql, /DELETE FROM sessions/);
   assert.match(sql, /WHERE user_id IN \(SELECT id FROM users WHERE role_id = 'owner'\)/);
+  assert.match(sql, /DELETE FROM login_attempts/);
   assert.match(sql, /COMMIT;$/);
   assert.throws(() => createResetSql("not-a-hash"), /Invalid password hash/);
 });

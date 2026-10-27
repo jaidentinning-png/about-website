@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const test = require("node:test");
 const portalApi = require("../api/[...path].js");
 
@@ -78,4 +79,22 @@ test("Vercel API handles preflight without requiring a database", async () => {
   assert.equal(response.statusCode, 204);
   assert.equal(response.ended, true);
   assert.equal(response.headers.allow, "GET, POST, PATCH, DELETE, OPTIONS");
+});
+
+test("nested Vercel API entry points dispatch to the shared portal handler", () => {
+  const routes = [
+    "../api/todo-items/bulk.js",
+    "../api/todo-items/[id].js",
+    "../api/tasks/[id].js",
+    "../api/documents/[id].js",
+    "../api/accounts/[id].js",
+    "../api/accounts/[id]/reset-password.js",
+    "../api/roles/[id].js",
+    "../api/payroll/[id].js",
+    "../api/automations/[id].js"
+  ];
+
+  for (const route of routes) {
+    assert.equal(require(path.resolve(__dirname, route)), portalApi, `${route} should export the shared API handler`);
+  }
 });

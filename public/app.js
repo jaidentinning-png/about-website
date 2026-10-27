@@ -69,7 +69,7 @@ async function api(url, options = {}) {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.toLowerCase().includes("application/json")) {
     if (url.startsWith("/api/") && response.status === 404) {
-      throw new Error("The portal backend is not connected to this site (API returned 404). Your sign-in was not checked. Deploy the Node portal server and route /api requests to it.");
+      throw new Error("This portal API route returned 404. The site owner needs to deploy the latest API routes.");
     }
     if (url.startsWith("/api/") && response.status >= 500) {
       throw new Error(`The portal backend is unavailable (HTTP ${response.status}). Please try again later or contact the Owner.`);
