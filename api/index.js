@@ -288,7 +288,29 @@ async function ensureSchema() {
       `CREATE TABLE IF NOT EXISTS login_attempts (
         ip_hash TEXT PRIMARY KEY, window_started_at BIGINT NOT NULL,
         attempt_count INTEGER NOT NULL DEFAULT 0
-      )`
+      )`,
+      `CREATE TABLE IF NOT EXISTS site_content (
+        key TEXT PRIMARY KEY, value JSONB NOT NULL DEFAULT '{}'::jsonb, updated_at TEXT NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS promotions (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+        invite_url TEXT NOT NULL, image_url TEXT NOT NULL DEFAULT '', featured BOOLEAN NOT NULL DEFAULT FALSE,
+        active BOOLEAN NOT NULL DEFAULT TRUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS tickets (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL,
+        subject TEXT NOT NULL, message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open'
+          CHECK(status IN ('open','pending','closed')),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS ticket_messages (
+        id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+        sender TEXT NOT NULL CHECK(sender IN ('visitor','owner')), message TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS promotions_active_idx ON promotions(active, created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS tickets_status_idx ON tickets(status, created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS ticket_messages_ticket_idx ON ticket_messages(ticket_id, created_at)`
     ];
     for (const statement of statements) await sql.query(statement);
 
@@ -585,6 +607,98 @@ async function handle(request, response) {
       return json(response, 200, { ok: true, mustChangePassword: user.must_change_password }, {
         "Set-Cookie": setCookie(session.token)
       });
+    }
+
+    if (request.method === "GET" && path === "/api/site") {
+      const rows = await sql.query("SELECT key, value FROM site_content");
+      const content = { name: "Your Name", tagline: "Creator, developer, and community builder.", about: "Write your story here. This section is fully editable from the owner panel.", youtube: "", discord: "", twitter: "", twitch: "", github: "", email: "", portfolio: [] };
+      for (const row of rows) content[row.key] = typeof row.value === "string" ? JSON.parse(row.value) : row.value;
+      const promotions = await sql.query("SELECT id, name, description, invite_url AS \"inviteUrl\", image_url AS \"imageUrl\", featured, active, created_at AS \"createdAt\" FROM promotions WHERE active = TRUE ORDER BY featured DESC, created_at DESC");
+      return json(response, 200, { content, promotions: promotions.map((row) => ({ ...row, featured: Boolean(row.featured), active: Boolean(row.active) })) });
+    }
+
+    if (request.method === "POST" && path === "/api/tickets") {
+      const body = readBody(request);
+      const name = text(body.name, 80);
+      const email = text(body.email, 160);
+      const subject = text(body.subject, 160);
+      const message = text(body.message, 5000);
+      if (!name || !email.includes("@") || !subject || !message) fail(400, "Complete every ticket field with a valid email address.");
+      const now = new Date().toISOString();
+      const id = randomUUID();
+      await sql.query("INSERT INTO tickets (id, name, email, subject, message, status, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,'open',$6,$6)", [id, name, email, subject, message, now]);
+      await sql.query("INSERT INTO ticket_messages (id, ticket_id, sender, message, created_at) VALUES ($1,$2,'visitor',$3,$4)", [randomUUID(), id, message, now]);
+      return json(response, 201, { ok: true, ticketId: id });
+    }
+
+    if (path.startsWith("/api/") && ((path === "/api/site" && request.method === "PUT") || path === "/api/promotions" || path.startsWith("/api/tickets") || /^\/api\/promotions\/[0-9a-f-]+$/i.test(path))) {
+      const user = await currentUser(request);
+      requireUser(user);
+      if (user.roleId !== "owner") fail(403, "Only the Owner can manage the website.");
+      if (request.method === "PUT" && path === "/api/site") {
+        const body = readBody(request);
+        const allowed = { name: 80, tagline: 180, about: 5000, youtube: 300, discord: 300, twitter: 300, twitch: 300, github: 300, email: 160, portfolio: 20000 };
+        for (const [key, limit] of Object.entries(allowed)) {
+          const raw = key === "portfolio" && Array.isArray(body[key]) ? body[key].slice(0, 12) : (typeof body[key] === "string" ? body[key].trim().slice(0, limit) : "");
+          const value = key === "portfolio" && Array.isArray(raw) ? raw.map((item) => ({ title: text(item.title, 120), description: text(item.description, 1000), link: text(item.link, 500), image: text(item.image, 500) })) : raw;
+          await sql.query("INSERT INTO site_content (key, value, updated_at) VALUES ($1,$2::jsonb,$3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at", [key, JSON.stringify(value), new Date().toISOString()]);
+        }
+        return json(response, 200, { ok: true });
+      }
+      if (request.method === "GET" && path === "/api/promotions") {
+        const rows = await sql.query("SELECT id, name, description, invite_url AS \"inviteUrl\", image_url AS \"imageUrl\", featured, active, created_at AS \"createdAt\", updated_at AS \"updatedAt\" FROM promotions ORDER BY created_at DESC");
+        return json(response, 200, { promotions: rows.map((row) => ({ ...row, featured: Boolean(row.featured), active: Boolean(row.active) })) });
+      }
+      if (request.method === "POST" && path === "/api/promotions") {
+        const body = readBody(request);
+        const name = text(body.name, 120);
+        const inviteUrl = text(body.inviteUrl, 500);
+        if (!name || !inviteUrl) fail(400, "Enter a name and Discord invite URL.");
+        const now = new Date().toISOString();
+        const id = randomUUID();
+        await sql.query("INSERT INTO promotions (id,name,description,invite_url,image_url,featured,active,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)", [id, name, text(body.description, 1000), inviteUrl, text(body.imageUrl, 500), body.featured === true, body.active !== false, now]);
+        return json(response, 201, { ok: true, id });
+      }
+      const promotionMatch = path.match(/^\/api\/promotions\/([0-9a-f-]+)$/i);
+      if (promotionMatch && (request.method === "PATCH" || request.method === "DELETE")) {
+        if (request.method === "DELETE") {
+          await sql.query("DELETE FROM promotions WHERE id = $1", [promotionMatch[1]]);
+          return json(response, 200, { ok: true });
+        }
+        const body = readBody(request);
+        const name = text(body.name, 120);
+        const inviteUrl = text(body.inviteUrl, 500);
+        if (!name || !inviteUrl) fail(400, "Enter a name and Discord invite URL.");
+        await sql.query("UPDATE promotions SET name=$1,description=$2,invite_url=$3,image_url=$4,featured=$5,active=$6,updated_at=$7 WHERE id=$8", [name, text(body.description, 1000), inviteUrl, text(body.imageUrl, 500), body.featured === true, body.active !== false, new Date().toISOString(), promotionMatch[1]]);
+        return json(response, 200, { ok: true });
+      }
+      if (request.method === "GET" && path === "/api/tickets") {
+        const rows = await sql.query("SELECT id,name,email,subject,message,status,created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM tickets ORDER BY created_at DESC LIMIT 200");
+        return json(response, 200, { tickets: rows });
+      }
+      const ticketMatch = path.match(/^\/api\/tickets\/([0-9a-f-]+)$/i);
+      const messageMatch = path.match(/^\/api\/tickets\/([0-9a-f-]+)\/messages$/i);
+      if (messageMatch && request.method === "POST") {
+        const body = readBody(request);
+        const message = text(body.message, 5000);
+        if (!message) fail(400, "Enter a reply.");
+        const now = new Date().toISOString();
+        await sql.query("INSERT INTO ticket_messages (id,ticket_id,sender,message,created_at) VALUES ($1,$2,'owner',$3,$4)", [randomUUID(), messageMatch[1], message, now]);
+        await sql.query("UPDATE tickets SET status='pending',updated_at=$1 WHERE id=$2", [now, messageMatch[1]]);
+        return json(response, 201, { ok: true });
+      }
+      if (ticketMatch && request.method === "GET") {
+        const tickets = await sql.query("SELECT id,name,email,subject,message,status,created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM tickets WHERE id=$1", [ticketMatch[1]]);
+        if (!tickets[0]) fail(404, "Ticket not found.");
+        const messages = await sql.query("SELECT id,sender,message,created_at AS \"createdAt\" FROM ticket_messages WHERE ticket_id=$1 ORDER BY created_at ASC", [ticketMatch[1]]);
+        return json(response, 200, { ticket: tickets[0], messages });
+      }
+      if (ticketMatch && request.method === "PATCH") {
+        const body = readBody(request);
+        if (!new Set(["open","pending","closed"]).has(body.status)) fail(400, "Invalid ticket status.");
+        await sql.query("UPDATE tickets SET status=$1,updated_at=$2 WHERE id=$3", [body.status, new Date().toISOString(), ticketMatch[1]]);
+        return json(response, 200, { ok: true });
+      }
     }
 
     if (request.method === "GET" && path === "/api/discord/login") {

@@ -1,61 +1,31 @@
 const state = {
+  route: "home",
+  content: {
+    name: "Your Name",
+    tagline: "Creator, developer, and community builder.",
+    about: "Write your story here. This section is fully editable from the owner panel.",
+    youtube: "", discord: "", twitter: "", twitch: "", github: "", email: "",
+    portfolio: []
+  },
+  promotions: [],
   user: null,
   csrfToken: "",
-  board: null,
-  tab: "board",
-  forcePasswordChange: false,
-  needsDiscordLink: false,
-  discordMessage: "",
+  panelSection: "content",
+  tickets: [],
+  activeTicket: null,
   toastTimer: null
 };
-
-const PERMISSION_LABELS = {
-  manageAccounts: "Create, disable, and reset staff accounts",
-  manageRoles: "Create roles and assign permissions",
-  manageTasks: "Manage and assign every task",
-  managePayroll: "Create, approve, reject, and pay Robux entries",
-  viewAllPayroll: "View every staff member's payroll",
-  manageAutomations: "Manage task-completion automations",
-  manageCanvas: "Move tasks on the team canvas",
-  manageDocuments: "Post, edit, and delete team documents"
-};
-const TABS = {
-  board: "Work board",
-  canvas: "Team canvas",
-  payroll: "Robux payroll",
-  staff: "Staff & accounts",
-  automations: "Automations",
-  documents: "Documents",
-  "todo-list": "To-do list",
-  "game-staff": "Game Staff Panel",
-  roles: "Roles & access"
-};
-const TODO_ITEM_STATUSES = [
-  { id: "not_done", label: "Not done" },
-  { id: "in_progress", label: "In progress" },
-  { id: "done", label: "Done" }
-];
-const STATUSES = [
-  { id: "todo", label: "To do" },
-  { id: "in_progress", label: "In progress" },
-  { id: "done", label: "Done" }
-];
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
-  })[character]);
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 }
 
-function can(permission) {
-  return state.user?.roleId === "owner" || state.user?.permissions?.[permission] === true;
+function currentRoute() {
+  const hash = window.location.hash.replace(/^#/, "") || "home";
+  return ["home", "about", "portfolio", "promotions", "support", "panel"].includes(hash) ? hash : "home";
 }
 
 async function api(url, options = {}) {
@@ -63,37 +33,11 @@ async function api(url, options = {}) {
   const headers = {};
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET" && method !== "HEAD") headers["X-CSRF-Token"] = state.csrfToken;
-  const response = await fetch(url, {
-    method,
-    credentials: "same-origin",
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body)
-  });
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.toLowerCase().includes("application/json")) {
-    if (url.startsWith("/api/") && response.status === 404) {
-      throw new Error("This portal API route returned 404. The site owner needs to deploy the latest API routes.");
-    }
-    if (url.startsWith("/api/") && response.status >= 500) {
-      throw new Error(`The portal backend is unavailable (HTTP ${response.status}). Please try again later or contact the Owner.`);
-    }
-    throw new Error(`The portal server returned an unexpected response (HTTP ${response.status}). Please contact the Owner.`);
-  }
-  let result = {};
-  try {
-    result = await response.json();
-  } catch {
-    throw new Error("The portal server returned invalid JSON. Please contact the Owner.");
-  }
-  if (!response.ok) {
-    if (response.status === 401 && state.user) {
-      state.user = null;
-      state.board = null;
-      $("#portalScreen").hidden = true;
-      $("#loginScreen").hidden = false;
-    }
-    throw new Error(result.error || "That request could not be completed.");
-  }
+  const response = await fetch(url, { method, credentials: "same-origin", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
+  const type = response.headers.get("content-type") || "";
+  if (!type.includes("application/json")) throw new Error("The server returned an unexpected response.");
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "The request could not be completed.");
   return result;
 }
 
@@ -106,1086 +50,313 @@ function showToast(message, isError = false) {
   state.toastTimer = setTimeout(() => toast.classList.remove("visible"), 3600);
 }
 
-function initials(name) {
-  return String(name || "CE").trim().split(/\s+/).slice(0, 2).map((part) => part[0] || "").join("").toUpperCase();
-}
-
-function formatDate(value) {
-  if (!value) return "No due date";
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function money(value) {
-  return `${Number(value || 0).toLocaleString()} R$`;
-}
-
-function setLoggedOut() {
-  state.user = null;
-  state.board = null;
-  state.csrfToken = "";
-  state.needsDiscordLink = false;
-  $("#portalScreen").hidden = true;
-  $("#loginScreen").hidden = false;
-  $("#loginForm").reset();
-  $("#loginError").hidden = true;
-  $("#username").focus();
-}
-
-async function loadCurrentUser() {
-  const result = await api("/api/me");
-  state.user = result.user;
-  state.csrfToken = result.csrfToken;
-  state.forcePasswordChange = result.user.mustChangePassword;
-  state.needsDiscordLink = !result.user.discordLinked;
-  state.board = null;
-  if (!state.forcePasswordChange && !state.needsDiscordLink) await loadBoard();
-  showPortal();
-}
-
-async function loadBoard() {
-  state.board = await api("/api/board");
-}
-
-function showPortal() {
-  $("#loginScreen").hidden = true;
-  $("#portalScreen").hidden = false;
-  $("#userDisplayName").textContent = state.user.displayName;
-  $("#userRole").textContent = state.user.roleName;
-  $("#avatarInitials").textContent = initials(state.user.displayName);
-  $$("[data-permission]").forEach((item) => {
-    item.hidden = !can(item.dataset.permission);
-  });
-  $("#mainNav").hidden = state.forcePasswordChange || state.needsDiscordLink;
-  if (state.forcePasswordChange) {
-    openPasswordDialog(true);
-    return;
-  }
-  if (state.needsDiscordLink) {
-    renderDiscordConnect();
-    return;
-  }
-  renderTab();
-}
-
-function setDialog(content, required = false) {
-  state.forcePasswordChange = required;
-  $("#dialogContent").innerHTML = content;
-  const dialog = $("#dialog");
-  if (!dialog.open) dialog.showModal();
-  const closeForm = $(".dialogCloseWrap");
-  closeForm.hidden = required;
+function setDialog(html) {
+  $("#siteDialogContent").innerHTML = html;
+  if (!$("#siteDialog").open) $("#siteDialog").showModal();
 }
 
 function closeDialog() {
-  if (state.forcePasswordChange) return;
-  $("#dialog").close();
+  if ($("#siteDialog").open) $("#siteDialog").close();
 }
 
-function openPasswordDialog(required = false) {
-  setDialog(`
-    <p class="eyebrow">${required ? "FIRST SIGN-IN" : "ACCOUNT SECURITY"}</p>
-    <h2>${required ? "Choose your password" : "Change your password"}</h2>
-    <p>${required ? "This account was created for you. Set a new password before opening your workspace." : "Use a unique password with at least 12 characters."}</p>
-    <form id="passwordForm" class="dialogForm">
-      <label>Temporary or current password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
-      <label>New password<input name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="200" required></label>
-      <label>Confirm new password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="200" required></label>
-      <p class="formError" data-form-error hidden></p>
-      <div class="dialogActions"><button class="button buttonPrimary" type="submit">Save password</button></div>
-    </form>
-  `, required);
+function socialLinks() {
+  const links = [
+    ["YouTube", state.content.youtube], ["Discord", state.content.discord],
+    ["Twitter / X", state.content.twitter], ["Twitch", state.content.twitch],
+    ["GitHub", state.content.github], ["Email", state.content.email ? `mailto:${state.content.email}` : ""]
+  ].filter(([, url]) => url);
+  return links.length ? links.map(([label, url]) => `<a class="socialLink" href="${escapeHtml(url)}" target="${label === "Email" ? "_self" : "_blank"}" rel="noreferrer">${escapeHtml(label)} <span>↗</span></a>`).join("") : '<p class="emptyCopy">Social links will appear here once they are added in the Panel.</p>';
 }
 
-function renderTab() {
-  if (state.forcePasswordChange || state.needsDiscordLink || !state.user) return;
-  const tab = TABS[state.tab] ? state.tab : "board";
-  const nav = $(`[data-tab="${tab}"]`);
-  if (nav?.hidden) state.tab = "board";
-  $$(".navItem").forEach((item) => item.classList.toggle("active", item.dataset.tab === state.tab));
-  $("#currentSection").textContent = TABS[state.tab];
-  if (!state.board) {
-    $("#content").innerHTML = `<section class="accessNotice"><h2>Loading your workspace…</h2></section>`;
-    return;
-  }
-  const renderers = {
-    board: renderBoard,
-    canvas: renderCanvas,
-    payroll: renderPayroll,
-    staff: renderStaff,
-    automations: renderAutomations,
-    documents: renderDocuments,
-    "todo-list": renderTodoList,
-    "game-staff": renderGameStaff,
-    roles: renderRoles
-  };
-  $("#content").innerHTML = renderers[state.tab]();
+function renderPublicHeader() {
+  $$('[data-bind="name"]').forEach((element) => { element.textContent = state.content.name; });
+  document.title = `${state.content.name} | Portfolio`;
+  $$(".siteNav a, .panelLink").forEach((link) => link.classList.toggle("active", link.dataset.route === state.route));
+  $("#footerYear").textContent = new Date().getFullYear();
 }
 
-function renderGameStaff() {
+function renderHome() {
+  const featured = state.promotions.find((item) => item.featured && item.active) || state.promotions.find((item) => item.active);
   return `
-    <div class="pageHeading">
-      <div><p class="eyebrowMuted">GAME OPERATIONS</p><h1>Game Staff Panel</h1><p>Moderation, player activity, and live game operations in one place.</p></div>
-      <span class="gamePreviewBadge">PREVIEW ONLY</span>
-    </div>
-    <section class="gameConnectionNotice" aria-label="Roblox connection status">
-      <span class="gameConnectionDot" aria-hidden="true"></span>
-      <div><strong>Roblox is not connected</strong><p>This panel is a visual preview. It shows no live game data, and no actions are sent to Roblox.</p></div>
-    </section>
-    <section class="summaryGrid gameSummaryGrid" aria-label="Game status">
-      <div class="summaryCard"><span>Live servers</span><strong>—<small>not connected</small></strong></div>
-      <div class="summaryCard"><span>Players online</span><strong>—<small>not connected</small></strong></div>
-      <div class="summaryCard"><span>Moderation activity</span><strong>—<small>no live data</small></strong></div>
-    </section>
-    <div class="gameStaffGrid">
-      <section class="panel gamePanel">
-        <div class="gamePanelHeading"><div><p class="eyebrowMuted">PLAYER SAFETY</p><h2>Moderation</h2></div><span class="previewTag">PREVIEW</span></div>
-        <p>Planned tools for authorized staff. These controls are disabled and cannot affect players.</p>
-        <label class="gameFieldLabel" for="gamePlayerLookup">Roblox username or user ID</label>
-        <input id="gamePlayerLookup" type="text" placeholder="Waiting for Roblox connection" disabled>
-        <div class="gameActionRow" aria-label="Preview moderation actions">
-          <button class="button" type="button" disabled title="Unavailable in preview">Warn</button>
-          <button class="button" type="button" disabled title="Unavailable in preview">Kick</button>
-          <button class="button" type="button" disabled title="Unavailable in preview">Ban</button>
+    <section class="heroSection">
+      <div class="heroCopy">
+        <p class="sectionKicker">WELCOME</p>
+        <h1>${escapeHtml(state.content.name)}</h1>
+        <p class="heroTagline">${escapeHtml(state.content.tagline)}</p>
+        <div class="heroActions">
+          <a class="primaryButton" href="#portfolio">View portfolio</a>
+          <a class="quietButton" href="#support">Get in touch</a>
         </div>
-        <div class="gameFeatureList"><span>Temporary and permanent bans</span><span>Warnings and kick history</span><span>Reason, evidence, and staff audit trail</span></div>
-      </section>
-      <section class="panel gamePanel">
-        <div class="gamePanelHeading"><div><p class="eyebrowMuted">LIVE OPERATIONS</p><h2>Global announcement</h2></div><span class="previewTag">PREVIEW</span></div>
-        <p>Draft an announcement to send to every active server. Sending is unavailable in preview.</p>
-        <label class="srOnly" for="gameAnnouncement">Announcement message</label>
-        <textarea id="gameAnnouncement" placeholder="Announcement composer will be available after connection" disabled></textarea>
-        <div class="gameActionRow"><button class="button" type="button" disabled title="Unavailable in preview">Send to all servers</button></div>
-        <div class="gameFeatureList"><span>Global and server-targeted messages</span><span>Staff attribution and delivery history</span></div>
-      </section>
-      <section class="panel gamePanel gameWidePanel">
-        <div class="gamePanelHeading"><div><p class="eyebrowMuted">LIVE INSTANCES</p><h2>Server list</h2></div><span class="previewTag">NO LIVE DATA</span></div>
-        <p>Server health, region, player count, uptime, and instance actions will appear here after an authorized connection.</p>
-        <div class="gameEmptyState">Server data will appear when Roblox is connected.</div>
-      </section>
-      <section class="panel gamePanel gameWidePanel">
-        <div class="gamePanelHeading"><div><p class="eyebrowMuted">PLAYER DIRECTORY</p><h2>Players &amp; members</h2></div><span class="previewTag">NO LIVE DATA</span></div>
-        <p>Find a player across servers and review their profile, session, and moderation history.</p>
-        <label class="srOnly" for="gameMemberSearch">Search players</label>
-        <input id="gameMemberSearch" type="search" placeholder="Player search will be available after connection" disabled>
-        <div class="gameEmptyState">Player list and online member count are not available in preview.</div>
-      </section>
-      <section class="panel gamePanel gameWidePanel">
-        <div class="gamePanelHeading"><div><p class="eyebrowMuted">STAFF AUDIT</p><h2>Recent activity</h2></div><span class="previewTag">NO LIVE DATA</span></div>
-        <p>Review who performed an action, when it happened, and which player or server was affected.</p>
-        <div class="gameEmptyState">Moderation and announcement logs are not connected.</div>
-      </section>
-    </div>`;
-}
-
-function renderDiscordConnect() {
-  $("#currentSection").textContent = "Connect Discord";
-  $("#content").innerHTML = `
-    <section class="accessNotice discordConnect">
-      <p class="eyebrowMuted">ONE-TIME ACCOUNT SETUP</p>
-      <h1>Connect your Discord</h1>
-      <p>Link the Discord account you use for the team to unlock your workspace. We request your Discord user ID, username, and server membership list so HR/Owner can verify your account.</p>
-      <p class="muted">We do not request access to messages. Server membership is saved as a snapshot when you connect; we do not keep your Discord access token.</p>
-      ${state.discordMessage ? `<p class="discordConnectError" role="alert">${escapeHtml(state.discordMessage)}</p>` : ""}
-      <button class="button buttonPrimary" type="button" data-action="link-discord">Continue with Discord</button>
-    </section>`;
-}
-
-function renderBoard() {
-  const tasks = state.board.tasks;
-  const mine = tasks.filter((task) => task.assigneeId === state.user.id);
-  const done = mine.filter((task) => task.status === "done").length;
-  const open = tasks.filter((task) => task.status !== "done").length;
-  const canManageTasks = can("manageTasks");
-  return `
-    <div class="pageHeading">
-      <div><p class="eyebrowMuted">PROJECT OVERVIEW</p><h1>Work board</h1><p>Keep the team aligned and every task moving forward.</p></div>
-      <div class="headingActions"><button class="button buttonPrimary" data-action="new-task">＋ New task</button></div>
-    </div>
-    <section class="summaryGrid" aria-label="Task summary">
-      <div class="summaryCard"><span>Open tasks</span><strong>${open}<small>across the team</small></strong></div>
-      <div class="summaryCard"><span>Assigned to you</span><strong>${mine.filter((task) => task.status !== "done").length}<small>in progress</small></strong></div>
-      <div class="summaryCard"><span>Completed by you</span><strong>${done}<small>tasks</small></strong></div>
-    </section>
-    <section class="boardGrid" aria-label="Kanban board">
-      ${STATUSES.map((status) => {
-        const statusTasks = tasks.filter((task) => task.status === status.id);
-        return `<div class="boardColumn">
-          <div class="columnHead"><div class="columnLabel ${status.id}"><i></i>${status.label}</div><span class="columnCount">${statusTasks.length}</span></div>
-          ${statusTasks.length ? statusTasks.map((task) => renderTaskCard(task, canManageTasks)).join("") : `<div class="emptyState">Nothing here yet</div>`}
-        </div>`;
-      }).join("")}
-    </section>`;
-}
-
-function renderTaskCard(task, canManageTasks) {
-  const canEdit = canManageTasks || task.assigneeId === state.user.id || task.createdBy === state.user.id;
-  const assignableStaff = state.board.staff.filter((staff) => staff.active !== false);
-  const statusControl = canEdit
-    ? `<select aria-label="Task status" data-task-status="${task.id}">${STATUSES.map((option) => `<option value="${option.id}" ${task.status === option.id ? "selected" : ""}>${option.label}</option>`).join("")}</select>`
-    : `<span class="statusPill">${escapeHtml(task.status.replace("_", " "))}</span>`;
-  const assigneeControl = canManageTasks
-    ? `<select class="selectAssignee" aria-label="Assign task" data-task-assignee="${task.id}">
-        <option value="">Unassigned</option>${assignableStaff.map((staff) => `<option value="${escapeHtml(staff.id)}" ${task.assigneeId === staff.id ? "selected" : ""}>${escapeHtml(staff.displayName)}</option>`).join("")}
-      </select>`
-    : `<span class="assigneePill">${escapeHtml(task.assigneeName || "Unassigned")}</span>`;
-  return `<article class="taskCard">
-    <h3 class="taskTitle">${escapeHtml(task.title)}</h3>
-    ${task.description ? `<p class="taskDescription">${escapeHtml(task.description)}</p>` : ""}
-    <div class="taskMeta"><span>${escapeHtml(formatDate(task.dueDate))}</span>${canManageTasks ? "" : assigneeControl}</div>
-    <div class="taskFooter">${statusControl}${canManageTasks ? assigneeControl : ""}
-      ${canEdit ? `<button class="button buttonSmall buttonQuiet" data-action="edit-task" data-id="${task.id}">Edit</button>` : ""}
-      ${canManageTasks ? `<button class="button buttonSmall buttonDanger" data-action="delete-task" data-id="${task.id}">Delete</button>` : ""}
-    </div>
-  </article>`;
-}
-
-function renderCanvas() {
-  const canMove = can("manageCanvas") || can("manageTasks");
-  return `
-    <div class="pageHeading"><div><p class="eyebrowMuted">PLANNING SPACE</p><h1>Team canvas</h1><p>Arrange work spatially to map out the next steps.</p></div></div>
-    <p class="canvasHint">${canMove ? "Drag cards to organize the shared team canvas. Positions are saved for everyone." : "Shared planning canvas. Ask an administrator for permission to rearrange cards."}</p>
-    <div class="canvasWrap"><div class="canvas" id="canvas">
-      ${state.board.tasks.map((task) => `<article class="canvasCard" ${canMove ? `data-canvas-id="${task.id}"` : ""} style="left:${Math.max(0, task.canvasX)}px;top:${Math.max(0, task.canvasY)}px">
-        <h3 class="taskTitle">${escapeHtml(task.title)}</h3>
-        ${task.description ? `<p class="taskDescription">${escapeHtml(task.description)}</p>` : ""}
-        <div class="taskMeta"><span class="statusPill ${task.status}">${escapeHtml(task.status.replace("_", " "))}</span><span>${escapeHtml(task.assigneeName || "Unassigned")}</span></div>
-      </article>`).join("")}
-    </div></div>`;
-}
-
-function renderPayroll() {
-  const records = state.board.payroll;
-  const manageable = can("managePayroll");
-  const paidTotal = records.filter((row) => row.status === "paid").reduce((sum, row) => sum + row.amount, 0);
-  const pendingTotal = records.filter((row) => row.status === "pending").reduce((sum, row) => sum + row.amount, 0);
-  const staffOptions = manageable ? state.board.staff.filter((person) => person.active !== false).map((person) => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.displayName)}</option>`).join("") : "";
-  return `
-    <div class="pageHeading"><div><p class="eyebrowMuted">TEAM REWARDS</p><h1>Robux payroll</h1><p>Track pending rewards, approvals, and completed payouts. Transfers happen outside this portal.</p></div></div>
-    <section class="summaryGrid">
-      <div class="summaryCard"><span>${manageable ? "Awaiting review" : "Your pending rewards"}</span><strong>${money(pendingTotal)}</strong></div>
-      <div class="summaryCard"><span>${manageable ? "Marked as paid" : "Your paid rewards"}</span><strong>${money(paidTotal)}</strong></div>
-      <div class="summaryCard"><span>${manageable ? "Payroll entries" : "Your entries"}</span><strong>${records.length}<small>tracked</small></strong></div>
-    </section>
-    ${manageable ? `<div class="panel" style="margin-bottom:16px">
-      <h2>Create a Robux entry</h2><p>Record a reward for approval. This portal does not send Robux.</p>
-      <form class="panelForm payrollForm" id="payrollForm">
-        <label>Staff member<select name="userId" required>${staffOptions}</select></label>
-        <label>Robux amount<input name="amount" type="number" min="1" max="10000000" step="1" required></label>
-        <label>Note<input name="note" maxlength="500" placeholder="Reason or payout period"></label>
-        <button class="button buttonPrimary" type="submit">Add entry</button>
-      </form>
-    </div>` : ""}
-    <div class="tableWrap"><table><thead><tr><th>Staff member</th><th>Amount</th><th>Note</th><th>Status</th><th>Created</th>${manageable ? "<th>Actions</th>" : ""}</tr></thead><tbody>
-      ${records.length ? records.map((record) => `<tr>
-        <td><span class="personCell"><strong>${escapeHtml(record.displayName)}</strong><small>Team reward</small></span></td>
-        <td>${money(record.amount)}</td><td>${escapeHtml(record.note || "—")}</td>
-        <td><span class="statusPill ${escapeHtml(record.status)}">${escapeHtml(record.status)}</span></td>
-        <td>${escapeHtml(new Date(record.createdAt).toLocaleDateString())}</td>
-        ${manageable ? `<td><div class="tableActions">${record.status === "pending" ? `<button class="button buttonSmall" data-action="payroll-status" data-id="${record.id}" data-status="approved">Approve</button><button class="button buttonSmall buttonDanger" data-action="payroll-status" data-id="${record.id}" data-status="rejected">Reject</button>` : ""}${record.status === "approved" ? `<button class="button buttonSmall buttonPrimary" data-action="payroll-status" data-id="${record.id}" data-status="paid">Mark paid</button>` : ""}</div></td>` : ""}
-      </tr>`).join("") : `<tr><td colspan="${manageable ? 6 : 5}" class="emptyState">No payroll entries yet.</td></tr>`}
-    </tbody></table></div>`;
-}
-
-function renderStaff() {
-  if (!can("manageAccounts")) return renderNoAccess();
-  return `
-    <div class="pageHeading"><div><p class="eyebrowMuted">TEAM DIRECTORY</p><h1>Staff &amp; accounts</h1><p>Issue invite-only accounts. New staff must set a password on their first sign-in.</p></div>
-      <div class="headingActions"><button class="button buttonPrimary" data-action="new-account">＋ Create account</button></div>
-    </div>
-    <div class="notice">Temporary passwords are shown only once. Share them directly with the intended team member; never post them publicly.</div>
-    <div class="notice">Use the three-dot button on a staff row for account tools and the Discord User Menu.</div>
-    <div class="tableWrap"><table><thead><tr><th>Team member</th><th>Role</th><th>Account</th><th>Discord</th><th>Actions</th></tr></thead><tbody>
-      ${state.board.staff.map((person) => `<tr data-staff-context="${escapeHtml(person.id)}" tabindex="0">
-        <td><span class="personCell"><strong>${escapeHtml(person.displayName)}</strong><small>@${escapeHtml(person.username || "staff")}</small></span></td>
-        <td><select aria-label="Staff role" data-account-role="${escapeHtml(person.id)}" ${person.active ? "" : "disabled"}>${state.board.roles.filter((role) => role.id !== "owner").map((role) => `<option value="${escapeHtml(role.id)}" ${person.roleId === role.id ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></td>
-        <td><span class="statusPill ${person.active ? "approved" : "rejected"}">${person.active ? "Active" : "Disabled"}</span></td>
-        <td><span class="statusPill ${person.discordLinked ? "approved" : "rejected"}">${person.discordLinked ? "Linked" : "Not linked"}</span></td>
-        <td><button class="button buttonSmall staffActionsButton" data-action="staff-actions" data-id="${escapeHtml(person.id)}" aria-label="Open actions for ${escapeHtml(person.displayName)}" title="Open staff actions"><span aria-hidden="true">⋮</span></button></td>
-      </tr>`).join("") || `<tr><td colspan="5" class="emptyState">No staff accounts yet.</td></tr>`}
-    </tbody></table></div>`;
-}
-
-function renderAutomations() {
-  if (!can("manageAutomations")) return renderNoAccess();
-  const automations = state.board.automations;
-  return `
-    <div class="pageHeading"><div><p class="eyebrowMuted">WORKFLOW RULES</p><h1>Automations</h1><p>Automatically create a pending Robux reward when an assigned task is completed.</p></div></div>
-    <div class="panelGrid">
-      <section class="panel"><h2>New automation</h2><p>Rewards are only recorded as pending payroll entries. HR or the Owner must approve and mark actual transfers as paid.</p>
-        <form class="panelForm" id="automationForm">
-          <label>Rule name<input name="name" maxlength="80" placeholder="e.g. Sprint task reward" required></label>
-          <label>Trigger<select disabled><option>When a task is completed</option></select></label>
-          <label>Robux reward<input name="robuxAmount" type="number" min="1" max="10000000" step="1" required></label>
-          <button class="button buttonPrimary" type="submit">Create automation</button>
-        </form>
-      </section>
-      <section class="panel"><h2>Active rules</h2><p>Automations only apply to tasks assigned to a staff member.</p>
-        <div class="listStack">${automations.length ? automations.map((rule) => `<div class="listRow">
-          <div><strong>${escapeHtml(rule.name)}</strong><small>On task completion · creates a ${money(rule.robuxAmount)} pending reward</small></div>
-          <div class="tableActions"><button class="button buttonSmall" data-action="toggle-automation" data-id="${rule.id}" data-active="${rule.active}">${rule.active ? "Pause" : "Resume"}</button><button class="button buttonSmall buttonDanger" data-action="delete-automation" data-id="${rule.id}">Delete</button></div>
-        </div>`).join("") : `<div class="emptyState">No automations configured yet.</div>`}</div>
-      </section>
-    </div>`;
-}
-
-function renderDocuments() {
-  const documents = state.board.documents || [];
-  const canManage = can("manageDocuments");
-  return `
-    <div class="pageHeading">
-      <div><p class="eyebrowMuted">TEAM KNOWLEDGE</p><h1>Documents</h1><p>Shared guides, announcements, and reference notes for the team.</p></div>
-      ${canManage ? `<div class="headingActions"><button class="button buttonPrimary" data-action="new-document">＋ Post document</button></div>` : ""}
-    </div>
-    ${documents.length ? `<section class="documentList" aria-label="Team documents">
-      ${documents.map((document) => `<article class="documentCard">
-        <div class="documentHeader">
-          <div><p class="eyebrowMuted">${escapeHtml(document.authorName)} <span aria-hidden="true">·</span> ${escapeHtml(new Date(document.updatedAt).toLocaleString())}${document.createdAt !== document.updatedAt ? " · Edited" : ""}</p><h2>${escapeHtml(document.title)}</h2></div>
-          ${canManage ? `<div class="tableActions"><button class="button buttonSmall" data-action="edit-document" data-id="${document.id}">Edit</button><button class="button buttonSmall buttonDanger" data-action="delete-document" data-id="${document.id}">Delete</button></div>` : ""}
-        </div>
-        <div class="documentContent">${escapeHtml(document.content)}</div>
-      </article>`).join("")}
-    </section>` : `<section class="accessNotice"><h2>No documents posted yet</h2><p>${canManage ? "Post the first team document to share a guide, announcement, or reference with everyone." : "Team guides, announcements, and other shared notes will appear here."}</p></section>`}`;
-}
-
-function renderTodoList() {
-  const items = state.board.todoItems || [];
-  const canManage = can("manageTasks");
-  const doneCount = items.filter((item) => item.status === "done").length;
-  const sections = [];
-  const sectionsByName = new Map();
-  for (const item of items) {
-    const name = item.section || "General";
-    let section = sectionsByName.get(name);
-    if (!section) {
-      section = { name, items: [] };
-      sectionsByName.set(name, section);
-      sections.push(section);
-    }
-    section.items.push(item);
-  }
-  return `
-    <div class="pageHeading">
-      <div><p class="eyebrowMuted">TEAM CHECKLIST</p><h1>To-do list</h1><p>Shared checklist. Staff can update the status of each item.</p></div>
-      ${canManage ? `<div class="headingActions"><button class="button" data-action="new-todo-item">＋ Add item</button><button class="button buttonPrimary" data-action="import-todo-list">＋ Import full list</button></div>` : ""}
-    </div>
-    ${items.length ? `<section class="summaryGrid" aria-label="To-do summary">
-      <div class="summaryCard"><span>Not done</span><strong>${items.filter((item) => item.status === "not_done").length}<small>items</small></strong></div>
-      <div class="summaryCard"><span>In progress</span><strong>${items.filter((item) => item.status === "in_progress").length}<small>items</small></strong></div>
-      <div class="summaryCard"><span>Done</span><strong>${doneCount}<small>of ${items.length} items</small></strong></div>
-    </section>
-    <section class="todoSections" aria-label="Shared to-do items">
-      ${sections.map((section) => `<section class="todoSection">
-        <div class="todoSectionHeader"><h2>${escapeHtml(section.name)}</h2><span>${section.items.length} ${section.items.length === 1 ? "item" : "items"}</span></div>
-        <div class="todoList">${section.items.map((item) => `<article class="todoCard ${item.status === "done" ? "todoComplete" : ""}">
-          <div class="todoMain">
-            <div class="todoCopy"><h3>${escapeHtml(item.title)}</h3>${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}
-              <small>Posted by ${escapeHtml(item.authorName)} · ${escapeHtml(new Date(item.createdAt).toLocaleDateString())}</small>
-            </div>
-            <div class="todoControls">
-              <label class="srOnly" for="todo-status-${item.id}">Status for ${escapeHtml(item.title)}</label>
-              <select id="todo-status-${item.id}" data-todo-status="${item.id}" aria-label="Status for ${escapeHtml(item.title)}">
-                ${TODO_ITEM_STATUSES.map((status) => `<option value="${status.id}" ${item.status === status.id ? "selected" : ""}>${status.label}</option>`).join("")}
-              </select>
-              ${canManage ? `<button class="button buttonSmall" data-action="edit-todo-item" data-id="${item.id}">Edit</button><button class="button buttonSmall buttonDanger" data-action="delete-todo-item" data-id="${item.id}">Delete</button>` : ""}
-            </div>
-          </div>
-        </article>`).join("")}
-      </section>`).join("")}
-    </section>` : `<section class="accessNotice"><h2>The list is empty</h2><p>${canManage ? "Add the first to-do item or import a full Markdown list." : "To-do items added by HR or the Owner will appear here."}</p></section>`}`;
-}
-
-function permissionChecks(values = {}) {
-  return Object.entries(PERMISSION_LABELS).map(([key, label]) => `<label class="checkRow"><input type="checkbox" name="${key}" ${values[key] ? "checked" : ""}>${escapeHtml(label)}</label>`).join("");
-}
-
-function renderRoles() {
-  if (!can("manageRoles")) return renderNoAccess();
-  const roles = state.board.roles;
-  return `
-    <div class="pageHeading"><div><p class="eyebrowMuted">ACCESS CONTROL</p><h1>Roles &amp; access</h1><p>Customize what staff roles are allowed to do. The Owner is the system superadmin.</p></div></div>
-    <div class="notice">HR is the highest staff rank and can create accounts. Owner is the site superadmin and always retains full control.</div>
-    <div class="panelGrid">
-      <section class="panel"><h2>Create a role</h2><p>Permissions can be changed later. Existing accounts keep their role assignment.</p>
-        <form class="panelForm" id="roleCreateForm">
-          <label>Role name<input name="name" maxlength="40" minlength="2" required></label>
-          <div class="rolePermissionList">${permissionChecks()}</div>
-          <button class="button buttonPrimary" type="submit">Create role</button>
-        </form>
-      </section>
-      <section class="panel"><h2>Current roles</h2><p>Owner permissions are fixed and cannot be removed.</p>
-        <div class="listStack">${roles.map((role) => `<div class="listRow">
-          <div><strong>${escapeHtml(role.name)} ${role.system ? '<span class="roleTag">System</span>' : ""}</strong><small>${role.system ? "Unrestricted site owner" : Object.entries(role.permissions).filter(([, enabled]) => enabled).map(([key]) => PERMISSION_LABELS[key]).join(" · ") || "Standard staff access"}</small></div>
-          ${role.system ? "" : `<div class="tableActions"><button class="button buttonSmall" data-action="edit-role" data-id="${role.id}">Edit</button><button class="button buttonSmall buttonDanger" data-action="delete-role" data-id="${role.id}">Delete</button></div>`}
-        </div>`).join("")}</div>
-      </section>
-    </div>`;
-}
-
-function renderNoAccess() {
-  return `<section class="accessNotice"><h2>Restricted area</h2><p>Your account does not have permission to access this section. Contact the Owner or HR administrator if you need access.</p></section>`;
-}
-
-function openTaskForm(task = null, targetAssigneeId = "") {
-  const canAssign = can("manageTasks");
-  const assignableStaff = state.board.staff.filter((person) => person.active !== false);
-  setDialog(`
-    <p class="eyebrow">TEAM WORKFLOW</p><h2>${task ? "Edit task" : "Create a task"}</h2><p>${task ? "Update the task details and assignment." : "Add a clear assignment for the team. Staff can create tasks for themselves; managers can assign them to others."}</p>
-    <form id="taskForm" class="dialogForm" ${task ? `data-id="${task.id}"` : ""}>
-      <label>Task title<input name="title" maxlength="120" value="${escapeHtml(task?.title || "")}" required autofocus></label>
-      <label>Description<textarea name="description" maxlength="2000" placeholder="Add context, links, or acceptance criteria">${escapeHtml(task?.description || "")}</textarea></label>
-      ${canAssign ? `<label>Assign to<select name="assigneeId">${assignableStaff.map((person) => `<option value="${escapeHtml(person.id)}" ${task?.assigneeId === person.id || (!task && targetAssigneeId === person.id) ? "selected" : ""}>${escapeHtml(person.displayName)}</option>`).join("")}<option value="" ${task?.assigneeId || targetAssigneeId ? "" : "selected"}>Unassigned</option></select></label>` : ""}
-      <label>Due date<input name="dueDate" type="date" value="${escapeHtml(task?.dueDate || "")}"></label>
-      ${task ? `<label>Status<select name="status">${STATUSES.map((status) => `<option value="${status.id}" ${task.status === status.id ? "selected" : ""}>${status.label}</option>`).join("")}</select></label>` : ""}
-      <p class="formError" data-form-error hidden></p>
-      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">${task ? "Save changes" : "Create task"}</button></div>
-    </form>`);
-  $("#taskForm input[name=title]").focus();
-}
-
-function staffForId(id) {
-  return state.board?.staff.find((person) => person.id === id);
-}
-
-function openStaffActions(person) {
-  if (!person || !can("manageAccounts")) return;
-  const canEditAccount = person.roleId !== "owner" && person.id !== state.user.id;
-  setDialog(`
-    <p class="eyebrow">STAFF ACTIONS</p><h2>${escapeHtml(person.displayName)}</h2>
-    <p>@${escapeHtml(person.username || "staff")} · ${escapeHtml(person.roleName)}</p>
-    <div class="staffActionGrid">
-      <button class="button" data-action="staff-user-menu" data-id="${escapeHtml(person.id)}">User Menu</button>
-      <button class="button" data-action="staff-view-tasks" data-id="${escapeHtml(person.id)}">View tasks</button>
-      ${can("manageTasks") ? `<button class="button" data-action="staff-create-task" data-id="${escapeHtml(person.id)}">Assign task</button>` : ""}
-      ${can("managePayroll") || can("viewAllPayroll") ? `<button class="button" data-action="staff-view-payroll" data-id="${escapeHtml(person.id)}">View payroll</button>` : ""}
-      ${can("managePayroll") ? `<button class="button" data-action="staff-add-payroll" data-id="${escapeHtml(person.id)}">Add payroll</button>` : ""}
-      <button class="button" data-action="staff-view-documents" data-id="${escapeHtml(person.id)}">View authored documents</button>
-      ${canEditAccount ? `<button class="button" data-action="staff-edit-name" data-id="${escapeHtml(person.id)}">Edit display name</button>` : ""}
-      ${canEditAccount ? `<button class="button" data-action="staff-change-role" data-id="${escapeHtml(person.id)}">Change role</button>` : ""}
-      ${canEditAccount ? `<button class="button" data-action="reset-account" data-id="${escapeHtml(person.id)}">Reset password</button>` : ""}
-      ${canEditAccount ? `<button class="button ${person.active ? "buttonDanger" : ""}" data-action="toggle-account" data-id="${escapeHtml(person.id)}" data-active="${person.active}">${person.active ? "Disable account" : "Enable account"}</button>` : ""}
-      ${canEditAccount && person.discordLinked ? `<button class="button buttonDanger" data-action="staff-unlink-discord" data-id="${escapeHtml(person.id)}">Unlink Discord</button>` : ""}
-      ${person.discordLinked ? `<button class="button" data-action="staff-copy-discord-id" data-id="${escapeHtml(person.id)}">Copy Discord ID</button>` : ""}
-    </div>
-    <div class="dialogActions"><button class="button buttonQuiet" data-action="close-dialog">Close</button></div>`);
-}
-
-async function showStaffDetails(id, section) {
-  const person = staffForId(id);
-  if (!person) return;
-  const data = await api(`/api/accounts/${encodeURIComponent(id)}/menu`);
-  const heading = section === "profile" ? "User Menu"
-    : section === "tasks" ? "Assigned tasks"
-      : section === "payroll" ? "Payroll history" : "Authored documents";
-  let content = "";
-  if (section === "profile") {
-    const discord = data.discord;
-    content = discord ? `
-      <div class="staffProfileGrid">
-        <div><small>Discord user ID</small><strong id="staffDiscordId">${escapeHtml(discord.id)}</strong></div>
-        <div><small>Discord username</small><strong>${escapeHtml(discord.username)}</strong></div>
-        <div><small>Discord account created</small><strong>${escapeHtml(discord.accountCreatedAt ? new Date(discord.accountCreatedAt).toLocaleString() : "Unavailable")}</strong></div>
-        <div><small>Portal username</small><strong>@${escapeHtml(data.staff.username)}</strong></div>
-        <div><small>Portal account created</small><strong>${escapeHtml(new Date(data.staff.createdAt).toLocaleString())}</strong></div>
-        <div><small>Discord linked</small><strong>${escapeHtml(new Date(discord.linkedAt).toLocaleString())}</strong></div>
       </div>
-      <h3>Discord servers (${discord.guilds.length})</h3>
-      <p class="muted">Membership snapshot from when this account last connected Discord.</p>
-      ${discord.guilds.length ? `<ul class="staffGuildList">${discord.guilds.map((guild) => `<li>${escapeHtml(guild.name)}</li>`).join("")}</ul>` : `<p class="emptyState">No Discord servers were returned for this account.</p>`}
-      <div class="dialogActions"><button class="button" data-action="staff-copy-discord-id" data-id="${escapeHtml(id)}">Copy Discord ID</button><button class="button buttonQuiet" data-action="close-dialog">Close</button></div>`
-      : `<p>This staff member has not linked Discord yet.</p><div class="dialogActions"><button class="button buttonQuiet" data-action="close-dialog">Close</button></div>`;
-  } else if (section === "tasks") {
-    content = data.tasks.length
-      ? `<div class="staffRecordList">${data.tasks.map((task) => `<article><strong>${escapeHtml(task.title)}</strong><span class="statusPill ${escapeHtml(task.status)}">${escapeHtml(task.status.replace("_", " "))}</span>${task.description ? `<p>${escapeHtml(task.description)}</p>` : ""}<small>${task.dueDate ? `Due ${escapeHtml(formatDate(task.dueDate))}` : "No due date"}</small></article>`).join("")}</div>`
-      : `<p class="emptyState">No tasks assigned to this person.</p>`;
-  } else if (section === "payroll") {
-    content = data.canViewPayroll
-      ? data.payroll.length
-        ? `<div class="staffRecordList">${data.payroll.map((entry) => `<article><strong>${money(entry.amount)} · ${escapeHtml(entry.status)}</strong><p>${escapeHtml(entry.note || "No note")}</p><small>${escapeHtml(new Date(entry.createdAt).toLocaleDateString())}</small></article>`).join("")}</div>`
-        : `<p class="emptyState">No payroll entries for this person.</p>`
-      : `<p class="emptyState">Your role cannot view payroll details.</p>`;
-  } else {
-    content = data.documents.length
-      ? `<div class="staffRecordList">${data.documents.map((document) => `<article><strong>${escapeHtml(document.title)}</strong><p>${escapeHtml(document.content)}</p><small>${escapeHtml(new Date(document.updatedAt).toLocaleDateString())}</small></article>`).join("")}</div>`
-      : `<p class="emptyState">This person has not authored any documents.</p>`;
-  }
-  setDialog(`<p class="eyebrow">STAFF PROFILE</p><h2>${escapeHtml(heading)} · ${escapeHtml(person.displayName)}</h2>${content}`);
+      <div class="heroPortrait"><div class="portraitFrame"><img src="/site-logo.jpg" alt="${escapeHtml(state.content.name)} logo"></div></div>
+    </section>
+    <section class="homeIntro">
+      <div><p class="sectionKicker">ABOUT ME</p><h2>A quick introduction.</h2></div>
+      <p>${escapeHtml(state.content.about).replace(/\n/g, "<br>")}</p>
+      <div class="socialRow">${socialLinks()}</div>
+    </section>
+    ${featured ? `<section class="featuredPromotion"><div><p class="sectionKicker">FEATURED COMMUNITY</p><h2>${escapeHtml(featured.name)}</h2><p>${escapeHtml(featured.description)}</p></div><a class="primaryButton" href="${escapeHtml(featured.inviteUrl)}" target="_blank" rel="noreferrer">Join Discord</a></section>` : ""}`;
 }
 
-function openStaffEditName(person) {
-  setDialog(`
-    <p class="eyebrow">STAFF ACCOUNT</p><h2>Edit display name</h2>
-    <form id="staffNameForm" class="dialogForm" data-id="${escapeHtml(person.id)}">
-      <label>Display name<input name="displayName" maxlength="50" value="${escapeHtml(person.displayName)}" required></label>
-      <p class="formError" data-form-error hidden></p>
-      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">Save name</button></div>
-    </form>`);
+function renderAbout() {
+  return `
+    <section class="pageHero"><p class="sectionKicker">ABOUT</p><h1>Behind the work.</h1></section>
+    <section class="aboutLayout">
+      <div class="aboutPortrait"><img src="/site-logo.jpg" alt="${escapeHtml(state.content.name)} logo"></div>
+      <article class="aboutCopy"><p class="sectionKicker">MY STORY</p><h2>${escapeHtml(state.content.name)}</h2><div>${escapeHtml(state.content.about).replace(/\n/g, "<br>")}</div><div class="socialRow">${socialLinks()}</div></article>
+    </section>`;
 }
 
-function openStaffRoleForm(person) {
-  const roles = state.board.roles.filter((role) => role.id !== "owner");
-  setDialog(`
-    <p class="eyebrow">STAFF ACCOUNT</p><h2>Change role</h2>
-    <form id="staffRoleForm" class="dialogForm" data-id="${escapeHtml(person.id)}">
-      <label>Role<select name="roleId">${roles.map((role) => `<option value="${escapeHtml(role.id)}" ${person.roleId === role.id ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></label>
-      <p class="formError" data-form-error hidden></p>
-      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">Save role</button></div>
-    </form>`);
+function renderPortfolio() {
+  const items = Array.isArray(state.content.portfolio) ? state.content.portfolio : [];
+  return `
+    <section class="pageHero"><p class="sectionKicker">PORTFOLIO</p><h1>Selected work.</h1><p>Projects, creations, and collaborations.</p></section>
+    ${items.length ? `<section class="portfolioGrid">${items.map((item) => `<article class="portfolioCard">${item.image ? `<img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.title)}">` : `<div class="portfolioPlaceholder"><span>PROJECT</span></div>`}<div><h2>${escapeHtml(item.title)}</h2><p>${escapeHtml(item.description)}</p>${item.link ? `<a href="${escapeHtml(item.link)}" target="_blank" rel="noreferrer">View project ↗</a>` : ""}</div></article>`).join("")}</section>` : `<section class="largeEmpty"><h2>No projects added yet.</h2><p>Projects can be added from the owner Panel once the portfolio editor is opened.</p></section>`}`;
 }
 
-function openStaffPayrollForm(person) {
-  setDialog(`
-    <p class="eyebrow">ROBLOX PAYROLL</p><h2>Add entry for ${escapeHtml(person.displayName)}</h2>
-    <form id="staffPayrollForm" class="dialogForm" data-id="${escapeHtml(person.id)}">
-      <label>Robux amount<input name="amount" type="number" min="1" max="10000000" step="1" required></label>
-      <label>Note<input name="note" maxlength="500" placeholder="Reason or payout period"></label>
-      <p class="formError" data-form-error hidden></p>
-      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">Add pending entry</button></div>
-    </form>`);
+function renderPromotions() {
+  const active = state.promotions.filter((item) => item.active);
+  return `
+    <section class="pageHero"><p class="sectionKicker">COMMUNITY</p><h1>Promotions.</h1><p>Featured Discord communities and partner servers.</p></section>
+    <section class="promotionGrid">${active.length ? active.map((item) => `<article class="promotionCard">${item.imageUrl ? `<img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.name)}">` : `<div class="promotionMark">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</div>`}<div><span>${item.featured ? "FEATURED" : "COMMUNITY"}</span><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.description)}</p><a class="primaryButton" href="${escapeHtml(item.inviteUrl)}" target="_blank" rel="noreferrer">Join server</a></div></article>`).join("") : `<div class="largeEmpty"><h2>No promotions posted yet.</h2><p>Discord communities can be added from the owner Panel.</p></div>`}</section>`;
 }
 
-function openAccountForm() {
-  const roles = state.board.roles.filter((role) => role.id !== "owner");
-  setDialog(`
-    <p class="eyebrow">STAFF MANAGEMENT</p><h2>Create a staff account</h2><p>A one-time temporary password will be generated. Staff must change it when they first sign in.</p>
-    <form id="accountForm" class="dialogForm">
-      <label>Username<input name="username" minlength="3" maxlength="24" pattern="[A-Za-z0-9._-]+" autocomplete="off" required></label>
-      <label>Display name<input name="displayName" maxlength="50" required></label>
-      <label>Role<select name="roleId" required>${roles.map((role) => `<option value="${escapeHtml(role.id)}">${escapeHtml(role.name)}</option>`).join("")}</select></label>
-      <p class="formError" data-form-error hidden></p>
-      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">Create account</button></div>
-    </form>`);
-  $("#accountForm input[name=username]").focus();
+function renderSupport() {
+  return `
+    <section class="pageHero"><p class="sectionKicker">SUPPORT</p><h1>Start a ticket.</h1><p>Ask about promotion, collaborations, work, or general support.</p></section>
+    <section class="supportLayout"><aside><p class="sectionKicker">CONTACT</p><h2>Tell me what you need.</h2><p>Your message is saved privately and can be viewed from the owner Panel.</p>${state.content.email ? `<a class="directEmail" href="mailto:${escapeHtml(state.content.email)}">${escapeHtml(state.content.email)}</a>` : ""}</aside>
+    <form id="ticketForm" class="ticketForm"><div class="formGrid"><label>Name<input name="name" required maxlength="80" autocomplete="name"></label><label>Email<input name="email" type="email" required maxlength="160" autocomplete="email"></label></div><label>Subject<input name="subject" required maxlength="160"></label><label>Message<textarea name="message" required maxlength="5000" rows="8"></textarea></label><button class="primaryButton" type="submit">Submit ticket</button></form></section>`;
 }
 
-function openDocumentForm(document = null) {
-  setDialog(`
-    <p class="eyebrow">TEAM KNOWLEDGE</p><h2>${document ? "Edit document" : "Post a document"}</h2><p>Write a shared guide, announcement, or reference note. Plain text and line breaks are supported.</p>
-    <form id="documentForm" class="dialogForm" ${document ? `data-id="${document.id}"` : ""}>
-      <label>Title<input name="title" maxlength="120" value="${escapeHtml(document?.title || "")}" required autofocus></label>
-      <label>Document<textarea name="content" maxlength="20000" rows="12" placeholder="Write the document here…" required>${escapeHtml(document?.content || "")}</textarea></label>
-      <p class="formError" data-form-error hidden></p>
-      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">${document ? "Save changes" : "Post document"}</button></div>
-    </form>`);
-  $("#documentForm input[name=title]").focus();
-}
-
-function openTodoItemForm(item = null) {
-  setDialog(`
-    <p class="eyebrow">TEAM CHECKLIST</p><h2>${item ? "Edit to-do item" : "Add a to-do item"}</h2><p>Staff will be able to set this item to Not done, In progress, or Done.</p>
-    <form id="todoItemForm" class="dialogForm" ${item ? `data-id="${item.id}"` : ""}>
-      <label>Section<input name="section" maxlength="80" value="${escapeHtml(item?.section || "General")}" required></label>
-      <label>To-do item<input name="title" maxlength="160" value="${escapeHtml(item?.title || "")}" required autofocus></label>
-      <label>Details<textarea name="description" maxlength="4000" placeholder="Optional details or instructions">${escapeHtml(item?.description || "")}</textarea></label>
-      ${item ? `<label>Status<select name="status">${TODO_ITEM_STATUSES.map((status) => `<option value="${status.id}" ${item.status === status.id ? "selected" : ""}>${status.label}</option>`).join("")}</select></label>` : ""}
-      <p class="formError" data-form-error hidden></p>
-      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">${item ? "Save changes" : "Add item"}</button></div>
-    </form>`);
-  $("#todoItemForm input[name=title]").focus();
-}
-
-function updateTodoImportPreview() {
-  const preview = $("#todoImportPreview");
-  if (!preview) return;
-  const groups = window.parseTodoMarkdown($("#todoMarkdownInput").value);
-  const count = groups.reduce((total, group) => total + group.items.length, 0);
-  if (!count) {
-    preview.innerHTML = `<p class="importHint">Paste Markdown headings and bullet lists. Headings become sections; each bullet becomes a to-do item.</p>`;
-    return;
-  }
-  preview.innerHTML = `<p class="importPreviewCount">${count} ${count === 1 ? "item" : "items"} in ${groups.length} ${groups.length === 1 ? "section" : "sections"}</p>
-    <div class="importPreviewGroups">${groups.map((group) => `<div><strong>${escapeHtml(group.section)}</strong><span>${group.items.length} ${group.items.length === 1 ? "item" : "items"}</span></div>`).join("")}</div>`;
-}
-
-function openTodoImportForm() {
-  setDialog(`
-    <p class="eyebrow">BULK IMPORT</p><h2>Import a full to-do list</h2>
-    <p>Paste Markdown text. Headings become sections, and each bullet or numbered line becomes a separate item.</p>
-    <form id="todoImportForm" class="dialogForm">
-      <label>Markdown list<textarea id="todoMarkdownInput" name="markdown" maxlength="32000" rows="14" placeholder="# Project name&#10;&#10;## Development to-do list&#10;&#10;### SCRIPTING&#10;- Player data saving and loading&#10;- Money and economy system&#10;&#10;### BUILDING&#10;- Main game map" required></textarea></label>
-      <div id="todoImportPreview" class="importPreview" aria-live="polite"><p class="importHint">Paste Markdown headings and bullet lists. Headings become sections; each bullet becomes a to-do item.</p></div>
-      <p class="formError" data-form-error hidden></p>
-      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">Import list</button></div>
-    </form>`);
-  $("#todoMarkdownInput").addEventListener("input", updateTodoImportPreview);
-  $("#todoMarkdownInput").focus();
-}
-
-function showTemporaryPassword(username, password) {
-  setDialog(`
-    <p class="eyebrow">ACCOUNT READY</p><h2>Share this temporary password</h2>
-    <p>Give this directly to <strong>${escapeHtml(username)}</strong>. It will not be shown again. The staff member must choose a new password at first sign-in.</p>
-    <div class="secretBox"><small>One-time temporary password</small><code id="temporaryPassword">${escapeHtml(password)}</code><small>Do not send this in a public channel.</small></div>
-    <div class="dialogActions"><button class="button" data-action="copy-password">Copy password</button><button class="button buttonPrimary" data-action="close-dialog">Done</button></div>`);
-}
-
-function openRoleEditor(role) {
-  setDialog(`
-    <p class="eyebrow">ROLE CONFIGURATION</p><h2>Edit ${escapeHtml(role.name)}</h2><p>Changes apply to all staff members with this role as soon as they make their next request.</p>
-    <form id="roleEditForm" class="dialogForm" data-id="${role.id}">
-      <label>Role name<input name="name" maxlength="40" minlength="2" value="${escapeHtml(role.name)}" required></label>
-      <div class="rolePermissionList">${permissionChecks(role.permissions)}</div>
-      <p class="formError" data-form-error hidden></p>
-      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">Save role</button></div>
-    </form>`);
-}
-
-function formValues(form) {
-  return Object.fromEntries(new FormData(form).entries());
-}
-
-function checkedPermissions(form) {
-  return Object.fromEntries(Object.keys(PERMISSION_LABELS).map((key) => [key, Boolean(form.elements.namedItem(key)?.checked)]));
-}
-
-function formError(form, error) {
-  const element = $("[data-form-error]", form);
-  if (element) {
-    element.textContent = error.message;
-    element.hidden = false;
-  } else {
-    showToast(error.message, true);
+async function checkPanelSession() {
+  try {
+    const result = await api("/api/me");
+    state.user = result.user;
+    state.csrfToken = result.csrfToken;
+  } catch {
+    state.user = null;
+    state.csrfToken = "";
   }
 }
 
-async function refresh() {
-  await loadBoard();
-  renderTab();
+function renderPanelLogin() {
+  return `<section class="panelLoginWrap"><form id="panelLoginForm" class="panelLogin"><img src="/site-logo.jpg" alt=""><p class="sectionKicker">OWNER ACCESS</p><h1>Open Panel.</h1><label>Username<input name="username" autocomplete="username" required maxlength="24"></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><p id="panelLoginError" class="formError" hidden></p><button class="primaryButton" type="submit">Sign in</button></form></section>`;
 }
 
-async function handleSubmit(event) {
+function renderPanelContent() {
+  return `<form id="siteContentForm" class="panelForm"><div class="panelFormGrid"><label>Display name<input name="name" value="${escapeHtml(state.content.name)}" maxlength="80"></label><label>Email<input name="email" type="email" value="${escapeHtml(state.content.email)}" maxlength="160"></label></div><label>Tagline<input name="tagline" value="${escapeHtml(state.content.tagline)}" maxlength="180"></label><label>About section<textarea name="about" rows="8" maxlength="5000">${escapeHtml(state.content.about)}</textarea></label><div class="panelFormGrid"><label>YouTube<input name="youtube" value="${escapeHtml(state.content.youtube)}" maxlength="300"></label><label>Discord<input name="discord" value="${escapeHtml(state.content.discord)}" maxlength="300"></label><label>Twitter / X<input name="twitter" value="${escapeHtml(state.content.twitter)}" maxlength="300"></label><label>Twitch<input name="twitch" value="${escapeHtml(state.content.twitch)}" maxlength="300"></label><label>GitHub<input name="github" value="${escapeHtml(state.content.github)}" maxlength="300"></label></div><button class="primaryButton" type="submit">Save website content</button></form>`;
+}
+
+function renderPortfolioEditor() {
+  const items = Array.isArray(state.content.portfolio) ? state.content.portfolio : [];
+  return `<div class="editorHeading"><div><p class="sectionKicker">PORTFOLIO</p><h2>Projects</h2></div><button class="secondaryButton" type="button" data-panel-action="add-project">＋ Add project</button></div><div class="panelList">${items.length ? items.map((item, index) => `<article class="panelListRow"><div><strong>${escapeHtml(item.title || "Untitled project")}</strong><p>${escapeHtml(item.description)}</p></div><button class="iconButton" type="button" data-panel-action="edit-project" data-index="${index}" aria-label="Edit project">•••</button></article>`).join("") : `<div class="panelEmpty">No portfolio projects yet.</div>`}</div>`;
+}
+
+async function loadPromotions() {
+  const result = await api("/api/promotions");
+  state.promotions = result.promotions || [];
+}
+
+function renderPromotionsEditor() {
+  return `<div class="editorHeading"><div><p class="sectionKicker">PROMOTIONS</p><h2>Discord servers</h2></div><button class="secondaryButton" type="button" data-panel-action="add-promotion">＋ Add promotion</button></div><div class="panelList">${state.promotions.length ? state.promotions.map((item) => `<article class="panelListRow"><div><strong>${escapeHtml(item.name)}</strong><p>${item.featured ? "Featured · " : ""}${item.active ? "Visible" : "Hidden"}</p></div><button class="iconButton" type="button" data-panel-action="edit-promotion" data-id="${escapeHtml(item.id)}" aria-label="Edit promotion">•••</button></article>`).join("") : `<div class="panelEmpty">No promotions yet.</div>`}</div>`;
+}
+
+async function loadTickets() {
+  const result = await api("/api/tickets");
+  state.tickets = result.tickets || [];
+}
+
+function renderTicketsEditor() {
+  return `<div class="ticketAdminLayout"><div><div class="editorHeading"><div><p class="sectionKicker">SUPPORT</p><h2>Tickets</h2></div></div><div class="ticketList">${state.tickets.length ? state.tickets.map((ticket) => `<button class="ticketRow" type="button" data-panel-action="open-ticket" data-id="${escapeHtml(ticket.id)}"><span><strong>${escapeHtml(ticket.subject)}</strong><small>${escapeHtml(ticket.name)} · ${escapeHtml(ticket.email)}</small></span><b class="status-${escapeHtml(ticket.status)}">${escapeHtml(ticket.status)}</b></button>`).join("") : `<div class="panelEmpty">No support tickets yet.</div>`}</div></div><article id="ticketDetail" class="ticketDetail"><div class="panelEmpty">Select a ticket to view and reply.</div></article></div>`;
+}
+
+async function renderPanel() {
+  await checkPanelSession();
+  if (!state.user) {
+    return renderPanelLogin();
+  }
+  if (state.user.roleId !== "owner") {
+    return `<section class="panelDenied"><p class="sectionKicker">ACCESS DENIED</p><h1>Owner access required.</h1><p>This panel can only be used by the owner account.</p><button class="secondaryButton" type="button" data-panel-action="logout">Sign out</button></section>`;
+  }
+  await Promise.all([loadPromotions(), loadTickets()]);
+  return `<section class="panelShell"><aside class="panelSidebar"><img src="/site-logo.jpg" alt=""><strong>Owner Panel</strong><nav><button class="${state.panelSection === "content" ? "active" : ""}" type="button" data-panel-tab="content">Website content</button><button class="${state.panelSection === "portfolio" ? "active" : ""}" type="button" data-panel-tab="portfolio">Portfolio</button><button class="${state.panelSection === "promotions" ? "active" : ""}" type="button" data-panel-tab="promotions">Promotions</button><button class="${state.panelSection === "tickets" ? "active" : ""}" type="button" data-panel-tab="tickets">Support tickets</button></nav><button class="panelLogout" type="button" data-panel-action="logout">Sign out</button></aside><main class="panelWorkspace"><div class="panelWorkspaceHeading"><div><p class="sectionKicker">CONTROL CENTER</p><h1>${state.panelSection === "content" ? "Website content" : state.panelSection === "portfolio" ? "Portfolio" : state.panelSection === "promotions" ? "Promotions" : "Support tickets"}</h1></div><a href="#home">View site ↗</a></div>${state.panelSection === "content" ? renderPanelContent() : state.panelSection === "portfolio" ? renderPortfolioEditor() : state.panelSection === "promotions" ? renderPromotionsEditor() : renderTicketsEditor()}</main></section>`;
+}
+
+async function render() {
+  state.route = currentRoute();
+  renderPublicHeader();
+  $("#content").classList.toggle("panelContent", state.route === "panel");
+  if (state.route === "home") $("#content").innerHTML = renderHome();
+  else if (state.route === "about") $("#content").innerHTML = renderAbout();
+  else if (state.route === "portfolio") $("#content").innerHTML = renderPortfolio();
+  else if (state.route === "promotions") $("#content").innerHTML = renderPromotions();
+  else if (state.route === "support") $("#content").innerHTML = renderSupport();
+  else $("#content").innerHTML = await renderPanel();
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+async function loadSite() {
+  try {
+    const result = await api("/api/site");
+    state.content = { ...state.content, ...result.content };
+    state.promotions = result.promotions || [];
+    if (typeof state.content.portfolio === "string") {
+      try { state.content.portfolio = JSON.parse(state.content.portfolio); } catch { state.content.portfolio = []; }
+    }
+  } catch (error) {
+    console.error(error);
+  }
+  await render();
+}
+
+function projectDialog(index = null) {
+  const items = Array.isArray(state.content.portfolio) ? state.content.portfolio : [];
+  const item = index === null ? { title: "", description: "", link: "", image: "" } : (items[index] || { title: "", description: "", link: "", image: "" });
+  setDialog(`<form id="projectForm" class="dialogForm"><div class="dialogHeading"><div><p class="sectionKicker">PORTFOLIO</p><h2>${index === null ? "Add project" : "Edit project"}</h2></div><button class="dialogClose" type="button" data-dialog-action="close" aria-label="Close">×</button></div><label>Project name<input name="title" value="${escapeHtml(item.title)}" maxlength="120" required></label><label>Description<textarea name="description" rows="5" maxlength="1000">${escapeHtml(item.description)}</textarea></label><label>Project link<input name="link" type="url" value="${escapeHtml(item.link)}" maxlength="500"></label><label>Image URL<input name="image" type="url" value="${escapeHtml(item.image)}" maxlength="500"></label><input type="hidden" name="index" value="${index === null ? "" : index}"><div class="dialogActions"><button class="dangerButton" type="button" data-dialog-action="delete-project" ${index === null ? "hidden" : ""}>Delete</button><button class="primaryButton" type="submit">Save project</button></div></form>`);
+}
+
+function promotionDialog(id = null) {
+  const item = id ? state.promotions.find((promotion) => promotion.id === id) : null;
+  const promotion = item || { name: "", description: "", inviteUrl: "", imageUrl: "", featured: false, active: true };
+  setDialog(`<form id="promotionForm" class="dialogForm"><div class="dialogHeading"><div><p class="sectionKicker">PROMOTION</p><h2>${id ? "Edit promotion" : "Add promotion"}</h2></div><button class="dialogClose" type="button" data-dialog-action="close" aria-label="Close">×</button></div><input type="hidden" name="id" value="${escapeHtml(id || "")}"><label>Server name<input name="name" value="${escapeHtml(promotion.name)}" maxlength="120" required></label><label>Description<textarea name="description" rows="4" maxlength="1000">${escapeHtml(promotion.description)}</textarea></label><label>Discord invite URL<input name="inviteUrl" type="url" value="${escapeHtml(promotion.inviteUrl)}" maxlength="500" required></label><label>Image URL<input name="imageUrl" type="url" value="${escapeHtml(promotion.imageUrl)}" maxlength="500"></label><div class="checkGrid"><label><input type="checkbox" name="featured" ${promotion.featured ? "checked" : ""}> Featured</label><label><input type="checkbox" name="active" ${promotion.active ? "checked" : ""}> Visible</label></div><div class="dialogActions"><button class="dangerButton" type="button" data-dialog-action="delete-promotion" ${id ? "" : "hidden"}>Delete</button><button class="primaryButton" type="submit">Save promotion</button></div></form>`);
+}
+
+document.addEventListener("submit", async (event) => {
   const form = event.target;
-  if (!(form instanceof HTMLFormElement)) return;
-  if (form.classList.contains("dialogCloseWrap")) return;
   event.preventDefault();
-
-  if (form.id === "loginForm") {
-    const errorEl = $("#loginError");
-    errorEl.hidden = true;
-    try {
-      await api("/api/login", { method: "POST", body: formValues(form) });
-      form.reset();
-      await loadCurrentUser();
-    } catch (error) {
-      errorEl.textContent = error.message;
-      errorEl.hidden = false;
-    }
-    return;
-  }
-
   try {
-    if (form.id === "staffNameForm") {
-      await api(`/api/accounts/${form.dataset.id}`, {
-        method: "PATCH",
-        body: formValues(form)
-      });
-      $("#dialog").close();
-      await refresh();
-      showToast("Display name updated.");
-      return;
-    }
-    if (form.id === "staffRoleForm") {
-      await api(`/api/accounts/${form.dataset.id}`, {
-        method: "PATCH",
-        body: formValues(form)
-      });
-      $("#dialog").close();
-      await refresh();
-      showToast("Staff role updated.");
-      return;
-    }
-    if (form.id === "staffPayrollForm") {
-      const values = formValues(form);
-      await api("/api/payroll", {
-        method: "POST",
-        body: { ...values, userId: form.dataset.id, amount: Number(values.amount) }
-      });
-      $("#dialog").close();
-      await refresh();
-      showToast("Robux payroll entry added as pending.");
-      return;
-    }
-    if (form.id === "passwordForm") {
-      const values = formValues(form);
-      if (values.newPassword !== values.confirmPassword) throw new Error("The new password entries do not match.");
-      await api("/api/password", { method: "POST", body: values });
-      $("#dialog").close();
-      state.forcePasswordChange = false;
-      await loadCurrentUser();
-      showToast("Password updated.");
-      return;
-    }
-    if (form.id === "taskForm") {
-      const values = formValues(form);
-      const taskId = form.dataset.id;
-      const taskBody = {
-        ...values,
-        assigneeId: values.assigneeId || undefined,
-        dueDate: values.dueDate || null
-      };
-      if (taskId) await api(`/api/tasks/${taskId}`, { method: "PATCH", body: taskBody });
-      else await api("/api/tasks", { method: "POST", body: taskBody });
-      $("#dialog").close();
-      await refresh();
-      showToast(taskId ? "Task updated." : "Task created.");
-      return;
-    }
-    if (form.id === "accountForm") {
-      const result = await api("/api/accounts", { method: "POST", body: formValues(form) });
-      $("#dialog").close();
-      await refresh();
-      showTemporaryPassword(result.username, result.temporaryPassword);
-      return;
-    }
-    if (form.id === "payrollForm") {
-      const values = formValues(form);
-      await api("/api/payroll", { method: "POST", body: { ...values, amount: Number(values.amount) } });
+    if (form.id === "ticketForm") {
+      const data = Object.fromEntries(new FormData(form));
+      await api("/api/tickets", { method: "POST", body: data });
       form.reset();
-      await refresh();
-      showToast("Robux payroll entry added as pending.");
-      return;
+      setDialog(`<section class="successDialog"><div class="successMark">✓</div><p class="sectionKicker">TICKET SUBMITTED</p><h2>Message received.</h2><p>Your support ticket has been saved successfully.</p><button class="primaryButton" type="button" data-dialog-action="close">Done</button></section>`);
     }
-    if (form.id === "automationForm") {
-      const values = formValues(form);
-      await api("/api/automations", { method: "POST", body: { ...values, robuxAmount: Number(values.robuxAmount) } });
-      form.reset();
-      await refresh();
-      showToast("Automation created.");
-      return;
+    if (form.id === "panelLoginForm") {
+      const data = Object.fromEntries(new FormData(form));
+      await api("/api/login", { method: "POST", body: data });
+      await loadSite();
+      await render();
+      showToast("Signed in.");
     }
-    if (form.id === "documentForm") {
-      const documentId = form.dataset.id;
-      if (documentId) {
-        await api(`/api/documents/${documentId}`, { method: "PATCH", body: formValues(form) });
-      } else {
-        await api("/api/documents", { method: "POST", body: formValues(form) });
-      }
-      $("#dialog").close();
-      await refresh();
-      showToast(documentId ? "Document updated." : "Document posted.");
-      return;
+    if (form.id === "siteContentForm") {
+      const data = Object.fromEntries(new FormData(form));
+      data.portfolio = state.content.portfolio || [];
+      await api("/api/site", { method: "PUT", body: data });
+      state.content = { ...state.content, ...data };
+      renderPublicHeader();
+      showToast("Website content saved.");
     }
-    if (form.id === "todoItemForm") {
-      const todoItemId = form.dataset.id;
-      const body = formValues(form);
-      if (todoItemId) {
-        await api(`/api/todo-items/${todoItemId}`, { method: "PATCH", body });
-      } else {
-        await api("/api/todo-items", { method: "POST", body });
-      }
-      $("#dialog").close();
-      await refresh();
-      showToast(todoItemId ? "To-do item updated." : "To-do item added.");
-      return;
+    if (form.id === "projectForm") {
+      const data = Object.fromEntries(new FormData(form));
+      const items = Array.isArray(state.content.portfolio) ? [...state.content.portfolio] : [];
+      const project = { title: data.title, description: data.description, link: data.link, image: data.image };
+      const index = data.index === "" ? null : Number(data.index);
+      if (index === null) items.push(project); else items[index] = project;
+      await api("/api/site", { method: "PUT", body: { ...state.content, portfolio: items } });
+      state.content.portfolio = items;
+      closeDialog();
+      await render();
+      showToast("Portfolio updated.");
     }
-    if (form.id === "todoImportForm") {
-      const groups = window.parseTodoMarkdown(form.elements.markdown.value);
-      const items = groups.flatMap((group, sectionOrder) => group.items.map((title, itemOrder) => ({
-        title,
-        section: group.section,
-        sectionOrder,
-        itemOrder
-      })));
-      if (!items.length) throw new Error("No Markdown bullet items found. Add headings followed by lines beginning with - or *.");
-      if (items.length > 300) throw new Error("Import up to 300 items at a time.");
-      const result = await api("/api/todo-items/bulk", { method: "POST", body: { items } });
-      $("#dialog").close();
-      await refresh();
-      showToast(`Imported ${result.count} to-do items in ${groups.length} sections.`);
-      return;
-    }
-    if (form.id === "roleCreateForm") {
-      const values = formValues(form);
-      await api("/api/roles", { method: "POST", body: { name: values.name, permissions: checkedPermissions(form) } });
-      await refresh();
-      showToast("Role created.");
-      return;
-    }
-    if (form.id === "roleEditForm") {
-      const values = formValues(form);
-      await api(`/api/roles/${form.dataset.id}`, { method: "PATCH", body: { name: values.name, permissions: checkedPermissions(form) } });
-      $("#dialog").close();
-      await refresh();
-      showToast("Role updated.");
+    if (form.id === "promotionForm") {
+      const data = Object.fromEntries(new FormData(form));
+      const promotion = { name: data.name, description: data.description, inviteUrl: data.inviteUrl, imageUrl: data.imageUrl, featured: form.elements.featured.checked, active: form.elements.active.checked };
+      if (data.id) await api(`/api/promotions/${data.id}`, { method: "PATCH", body: promotion });
+      else await api("/api/promotions", { method: "POST", body: promotion });
+      closeDialog();
+      await loadSite();
+      await render();
+      showToast("Promotion saved.");
     }
   } catch (error) {
-    formError(form, error);
+    if (form.id === "panelLoginForm") {
+      $("#panelLoginError").textContent = error.message;
+      $("#panelLoginError").hidden = false;
+    } else showToast(error.message, true);
   }
-}
+});
 
-async function handleClick(event) {
-  const tabButton = event.target.closest("[data-tab]");
-  if (tabButton) {
-    state.tab = tabButton.dataset.tab;
-    renderTab();
+document.addEventListener("click", async (event) => {
+  const menuButton = event.target.closest(".menuButton");
+  if (menuButton) {
+    const open = menuButton.getAttribute("aria-expanded") === "true";
+    menuButton.setAttribute("aria-expanded", String(!open));
+    $(".siteNav").classList.toggle("open", !open);
     return;
   }
-  const button = event.target.closest("[data-action]");
-  if (!button) return;
-  const { action, id } = button.dataset;
-  try {
-    if (action === "link-discord") {
-      window.location.assign("/api/discord/authorize");
-      return;
+
+  const dialogAction = event.target.closest("[data-dialog-action]");
+  if (dialogAction) {
+    const action = dialogAction.dataset.dialogAction;
+    if (action === "close") closeDialog();
+    if (action === "delete-project") {
+      const form = $("#projectForm");
+      const index = Number(new FormData(form).get("index"));
+      const items = (state.content.portfolio || []).filter((_, itemIndex) => itemIndex !== index);
+      try {
+        await api("/api/site", { method: "PUT", body: { ...state.content, portfolio: items } });
+        state.content.portfolio = items;
+        closeDialog(); await render(); showToast("Project deleted.");
+      } catch (error) { showToast(error.message, true); }
     }
-    if (action === "discord-login") {
-      window.location.assign("/api/discord/login");
-      return;
+    if (action === "delete-promotion") {
+      const id = $("#promotionForm [name=id]").value;
+      try { await api(`/api/promotions/${id}`, { method: "DELETE" }); closeDialog(); await loadSite(); await render(); showToast("Promotion deleted."); } catch (error) { showToast(error.message, true); }
     }
-    if (action === "staff-actions") {
-      openStaffActions(staffForId(id));
-      return;
-    }
-    if (action === "staff-user-menu") return await showStaffDetails(id, "profile");
-    if (action === "staff-view-tasks") return await showStaffDetails(id, "tasks");
-    if (action === "staff-view-payroll") return await showStaffDetails(id, "payroll");
-    if (action === "staff-view-documents") return await showStaffDetails(id, "documents");
-    if (action === "staff-create-task") {
-      const person = staffForId(id);
-      if (person) openTaskForm(null, person.id);
-      return;
-    }
-    if (action === "staff-add-payroll") {
-      const person = staffForId(id);
-      if (person) openStaffPayrollForm(person);
-      return;
-    }
-    if (action === "staff-edit-name") {
-      const person = staffForId(id);
-      if (person) openStaffEditName(person);
-      return;
-    }
-    if (action === "staff-change-role") {
-      const person = staffForId(id);
-      if (person) openStaffRoleForm(person);
-      return;
-    }
-    if (action === "staff-copy-discord-id") {
-      const details = await api(`/api/accounts/${encodeURIComponent(id)}/menu`);
-      if (!details.discord?.id) throw new Error("This staff member has not linked Discord.");
-      await navigator.clipboard.writeText(details.discord.id);
-      showToast("Discord user ID copied.");
-      return;
-    }
-    if (action === "staff-unlink-discord") {
-      if (!confirm("Unlink this person's Discord account? They will be signed out and must connect Discord again before using the workspace.")) return;
-      await api(`/api/accounts/${encodeURIComponent(id)}/unlink-discord`, { method: "POST", body: {} });
-      $("#dialog").close();
-      await refresh();
-      showToast("Discord account unlinked.");
-      return;
-    }
-    if (action === "new-task") return openTaskForm();
-    if (action === "change-password") return openPasswordDialog(false);
-    if (action === "edit-task") {
-      const task = state.board.tasks.find((entry) => entry.id === id);
-      if (task) openTaskForm(task);
-      return;
-    }
-    if (action === "delete-task") {
-      if (!confirm("Delete this task? Existing payroll entries will be kept.")) return;
-      await api(`/api/tasks/${id}`, { method: "DELETE", body: {} });
-      await refresh();
-      showToast("Task deleted.");
-      return;
-    }
-    if (action === "new-account") return openAccountForm();
-    if (action === "new-document") return openDocumentForm();
-    if (action === "new-todo-item") return openTodoItemForm();
-    if (action === "import-todo-list") return openTodoImportForm();
-    if (action === "edit-todo-item") {
-      const item = state.board.todoItems.find((entry) => entry.id === id);
-      if (item) openTodoItemForm(item);
-      return;
-    }
-    if (action === "delete-todo-item") {
-      if (!confirm("Delete this to-do item for everyone?")) return;
-      await api(`/api/todo-items/${id}`, { method: "DELETE", body: {} });
-      await refresh();
-      showToast("To-do item deleted.");
-      return;
-    }
-    if (action === "edit-document") {
-      const document = state.board.documents.find((entry) => entry.id === id);
-      if (document) openDocumentForm(document);
-      return;
-    }
-    if (action === "delete-document") {
-      if (!confirm("Delete this document for everyone?")) return;
-      await api(`/api/documents/${id}`, { method: "DELETE", body: {} });
-      await refresh();
-      showToast("Document deleted.");
-      return;
-    }
-    if (action === "close-dialog") return closeDialog();
-    if (action === "copy-password") {
-      await navigator.clipboard.writeText($("#temporaryPassword").textContent);
-      showToast("Temporary password copied.");
-      return;
-    }
-    if (action === "reset-account") {
-      if (!confirm("Reset this staff member's password? Their current sessions will be signed out.")) return;
-      const result = await api(`/api/accounts/${id}/reset-password`, { method: "POST", body: {} });
-      await refresh();
-      showTemporaryPassword(result.username, result.temporaryPassword);
-      return;
-    }
-    if (action === "toggle-account") {
-      const active = button.dataset.active !== "true";
-      if (!confirm(`${active ? "Enable" : "Disable"} this account?`)) return;
-      await api(`/api/accounts/${id}`, { method: "PATCH", body: { active } });
-      await refresh();
-      showToast(`Account ${active ? "enabled" : "disabled"}.`);
-      return;
-    }
-    if (action === "payroll-status") {
-      const verb = button.dataset.status === "paid" ? "mark this entry as paid" : `${button.dataset.status} this entry`;
-      if (!confirm(`Are you sure you want to ${verb}?`)) return;
-      await api(`/api/payroll/${id}`, { method: "PATCH", body: { status: button.dataset.status } });
-      await refresh();
-      showToast("Payroll status updated.");
-      return;
-    }
-    if (action === "toggle-automation") {
-      const active = button.dataset.active !== "true";
-      await api(`/api/automations/${id}`, { method: "PATCH", body: { active } });
-      await refresh();
-      showToast(`Automation ${active ? "resumed" : "paused"}.`);
-      return;
-    }
-    if (action === "delete-automation") {
-      if (!confirm("Delete this automation? Past payroll entries will remain.")) return;
-      await api(`/api/automations/${id}`, { method: "DELETE", body: {} });
-      await refresh();
-      showToast("Automation deleted.");
-      return;
-    }
-    if (action === "edit-role") {
-      const role = state.board.roles.find((entry) => entry.id === id);
-      if (role) openRoleEditor(role);
-      return;
-    }
-    if (action === "delete-role") {
-      if (!confirm("Delete this role? It must not be assigned to any staff accounts.")) return;
-      await api(`/api/roles/${id}`, { method: "DELETE" });
-      await refresh();
-      showToast("Role deleted.");
-      return;
-    }
+    return;
+  }
+
+  const panelTab = event.target.closest("[data-panel-tab]");
+  if (panelTab) { state.panelSection = panelTab.dataset.panelTab; await render(); return; }
+
+  const panelAction = event.target.closest("[data-panel-action]");
+  if (panelAction) {
+    const action = panelAction.dataset.panelAction;
+    if (action === "add-project") projectDialog();
+    if (action === "edit-project") projectDialog(Number(panelAction.dataset.index));
+    if (action === "add-promotion") promotionDialog();
+    if (action === "edit-promotion") promotionDialog(panelAction.dataset.id);
     if (action === "logout") {
-      await api("/api/logout", { method: "POST", body: {} });
-      setLoggedOut();
+      try { await api("/api/logout", { method: "POST" }); } catch {}
+      state.user = null; state.csrfToken = ""; await render();
     }
-  } catch (error) {
-    showToast(error.message, true);
+    if (action === "open-ticket") {
+      try {
+        const result = await api(`/api/tickets/${panelAction.dataset.id}`);
+        $("#ticketDetail").innerHTML = `<div class="ticketDetailHead"><div><p class="sectionKicker">TICKET</p><h2>${escapeHtml(result.ticket.subject)}</h2></div><select id="ticketStatus"><option value="open" ${result.ticket.status === "open" ? "selected" : ""}>Open</option><option value="pending" ${result.ticket.status === "pending" ? "selected" : ""}>Pending</option><option value="closed" ${result.ticket.status === "closed" ? "selected" : ""}>Closed</option></select></div><p class="ticketPerson">${escapeHtml(result.ticket.name)} · ${escapeHtml(result.ticket.email)}</p><div class="messageThread">${result.messages.map((message) => `<article class="${message.sender === "owner" ? "ownerMessage" : "visitorMessage"}"><small>${message.sender === "owner" ? "You" : "Visitor"}</small><p>${escapeHtml(message.message)}</p></article>`).join("")}</div><form id="ticketReplyForm" data-ticket-id="${escapeHtml(result.ticket.id)}"><label>Reply<textarea name="message" rows="5" maxlength="5000" required></textarea></label><button class="primaryButton" type="submit">Send reply</button></form>`;
+      } catch (error) { showToast(error.message, true); }
+    }
+    return;
   }
-}
 
-async function updateTask(taskId, patch) {
-  try {
-    const result = await api(`/api/tasks/${taskId}`, { method: "PATCH", body: patch });
-    await refresh();
-    if (result.noticeWarning) showToast(result.noticeWarning, true);
-    else showToast("Task updated.");
-  } catch (error) {
-    showToast(error.message, true);
-    await refresh();
-  }
-}
-
-document.addEventListener("submit", (event) => void handleSubmit(event));
-document.addEventListener("click", (event) => void handleClick(event));
-document.addEventListener("change", (event) => {
-  const todoStatus = event.target.closest("[data-todo-status]");
-  if (todoStatus) {
-    void api(`/api/todo-items/${todoStatus.dataset.todoStatus}`, {
-      method: "PATCH",
-      body: { status: todoStatus.value }
-    }).then(async () => {
-      await refresh();
-      showToast("To-do status updated.");
-    }).catch(async (error) => {
-      showToast(error.message, true);
-      await refresh();
-    });
-  }
-  const statusSelect = event.target.closest("[data-task-status]");
-  if (statusSelect) void updateTask(statusSelect.dataset.taskStatus, { status: statusSelect.value });
-  const assigneeSelect = event.target.closest("[data-task-assignee]");
-  if (assigneeSelect) void updateTask(assigneeSelect.dataset.taskAssignee, { assigneeId: assigneeSelect.value || null });
-  const accountRole = event.target.closest("[data-account-role]");
-  if (accountRole) {
-    void api(`/api/accounts/${accountRole.dataset.accountRole}`, { method: "PATCH", body: { roleId: accountRole.value } })
-      .then(async () => { await refresh(); showToast("Staff role updated."); })
-      .catch(async (error) => { showToast(error.message, true); await refresh(); });
+  const navLink = event.target.closest(".siteNav a, .panelLink, .siteBrand");
+  if (navLink) {
+    if ($(".siteNav").classList.contains("open")) $(".siteNav").classList.remove("open");
   }
 });
-document.addEventListener("contextmenu", (event) => {
-  const row = event.target.closest("[data-staff-context]");
-  if (!row || event.target.closest("button, select, input, a")) return;
+
+document.addEventListener("change", async (event) => {
+  if (event.target.id === "ticketStatus") {
+    const active = $(".ticketRow.active");
+    const ticketButton = $(".ticketRow[aria-current=true]") || event.target.closest(".ticketDetail");
+    const ticketId = $("#ticketReplyForm")?.dataset.ticketId;
+    if (!ticketId) return;
+    try { await api(`/api/tickets/${ticketId}`, { method: "PATCH", body: { status: event.target.value } }); await loadTickets(); showToast("Ticket status updated."); } catch (error) { showToast(error.message, true); }
+  }
+});
+
+// Reply submits use the shared submit listener.
+document.addEventListener("submit", async (event) => {
+  if (event.target.id !== "ticketReplyForm") return;
   event.preventDefault();
-  openStaffActions(staffForId(row.dataset.staffContext));
-});
-document.addEventListener("cancel", (event) => {
-  if (event.target.id === "dialog" && state.forcePasswordChange) event.preventDefault();
-}, true);
-
-let drag = null;
-document.addEventListener("pointerdown", (event) => {
-  const card = event.target.closest("[data-canvas-id]");
-  if (!card || event.button !== 0) return;
-  const rect = card.getBoundingClientRect();
-  drag = { card, id: card.dataset.canvasId, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
-  card.setPointerCapture(event.pointerId);
-});
-document.addEventListener("pointermove", (event) => {
-  if (!drag) return;
-  const canvas = $("#canvas");
-  if (!canvas) return;
-  const rect = canvas.getBoundingClientRect();
-  const x = Math.max(0, Math.min(5000, event.clientX - rect.left + canvas.parentElement.scrollLeft - drag.offsetX));
-  const y = Math.max(0, Math.min(5000, event.clientY - rect.top + canvas.parentElement.scrollTop - drag.offsetY));
-  drag.card.style.left = `${x}px`;
-  drag.card.style.top = `${y}px`;
-});
-document.addEventListener("pointerup", () => {
-  if (!drag) return;
-  const taskId = drag.id;
-  const x = Math.round(parseFloat(drag.card.style.left));
-  const y = Math.round(parseFloat(drag.card.style.top));
-  drag = null;
-  void updateTask(taskId, { canvasX: x, canvasY: y });
-});
-(async function initialize() {
-  const discordResult = new URLSearchParams(window.location.search).get("discord");
-  const discordMessages = {
-    login: "",
-    "login-cancelled": "Discord sign-in was cancelled. You can try again or use your username and password.",
-    "login-failed": "Discord sign-in failed. Please try again or use your username and password.",
-    "login-not-linked": "This Discord account is not linked to a staff account yet. Sign in with your username and password and connect Discord first.",
-    "login-disabled": "This staff account is disabled. Contact an administrator.",
-    "login-password-required": "Finish setting up your account with your temporary password before using Discord sign-in.",
-    cancelled: "Discord linking was cancelled. Connect Discord to continue.",
-    "already-linked": "That Discord account is already linked to another portal account. Ask the Owner for help.",
-    "login-expired": "This Discord sign-in expired. Please try again.",
-    expired: "This Discord sign-in or link expired. Please try again.",
-    failed: "Discord could not be connected. Please try again or contact the Owner.",
-    invalid: "The Discord callback was invalid. Please try linking again."
-  };
-  state.discordMessage = discordMessages[discordResult] || "";
-  if (discordResult) window.history.replaceState(null, "", window.location.pathname);
   try {
-    await loadCurrentUser();
-    if (discordResult === "linked") showToast("Discord connected.");
-    if (discordResult === "login") showToast("Signed in with Discord.");
-  } catch (error) {
-    setLoggedOut();
-    const loginError = state.discordMessage || (error.message !== "Please log in to continue." && !error.message.includes("log in")
-      ? error.message
-      : "");
-    if (loginError) {
-      $("#loginError").textContent = loginError;
-      $("#loginError").hidden = false;
-    }
-  }
-})();
+    const data = Object.fromEntries(new FormData(event.target));
+    await api(`/api/tickets/${event.target.dataset.ticketId}/messages`, { method: "POST", body: data });
+    const result = await api(`/api/tickets/${event.target.dataset.ticketId}`);
+    $("#ticketDetail").innerHTML = `<div class="ticketDetailHead"><div><p class="sectionKicker">TICKET</p><h2>${escapeHtml(result.ticket.subject)}</h2></div><select id="ticketStatus"><option value="open" ${result.ticket.status === "open" ? "selected" : ""}>Open</option><option value="pending" ${result.ticket.status === "pending" ? "selected" : ""}>Pending</option><option value="closed" ${result.ticket.status === "closed" ? "selected" : ""}>Closed</option></select></div><p class="ticketPerson">${escapeHtml(result.ticket.name)} · ${escapeHtml(result.ticket.email)}</p><div class="messageThread">${result.messages.map((message) => `<article class="${message.sender === "owner" ? "ownerMessage" : "visitorMessage"}"><small>${message.sender === "owner" ? "You" : "Visitor"}</small><p>${escapeHtml(message.message)}</p></article>`).join("")}</div><form id="ticketReplyForm" data-ticket-id="${escapeHtml(result.ticket.id)}"><label>Reply<textarea name="message" rows="5" maxlength="5000" required></textarea></label><button class="primaryButton" type="submit">Send reply</button></form>`;
+    await loadTickets(); showToast("Reply saved.");
+  } catch (error) { showToast(error.message, true); }
+});
+
+window.addEventListener("hashchange", render);
+window.addEventListener("DOMContentLoaded", loadSite);

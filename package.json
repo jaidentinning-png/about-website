@@ -1,8 +1,8 @@
 {
-  "name": "cartel-empire-dominion-staff-portal",
+  "name": "personal-portfolio-site",
   "version": "1.0.0",
   "private": true,
-  "description": "Private staff and development portal for Cartel Empire: Dominion",
+  "description": "Public personal portfolio with an owner-editable panel and support tickets",
   "engines": {
     "node": ">=22.13.0"
   },

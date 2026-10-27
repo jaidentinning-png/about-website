@@ -478,6 +478,42 @@ function buildBootstrapDb() {
       window_started_at INTEGER NOT NULL,
       attempt_count INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS site_content (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS promotions (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      invite_url TEXT NOT NULL,
+      image_url TEXT NOT NULL DEFAULT '',
+      featured INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS tickets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','pending','closed')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS ticket_messages (
+      id TEXT PRIMARY KEY,
+      ticket_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+      sender TEXT NOT NULL CHECK(sender IN ('visitor','owner')),
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS promotions_active_idx ON promotions(active, created_at DESC);
+    CREATE INDEX IF NOT EXISTS tickets_status_idx ON tickets(status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS ticket_messages_ticket_idx ON ticket_messages(ticket_id, created_at);
   `);
   const userColumns = new Set(db.prepare("PRAGMA table_info(users)").all().map((column) => column.name));
   if (!userColumns.has("discord_id")) db.exec("ALTER TABLE users ADD COLUMN discord_id TEXT");
@@ -696,6 +732,129 @@ async function handleApi(req, res, url) {
   const route = `${req.method} ${url.pathname}`;
   if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
     checkOrigin(req);
+  }
+
+  if (route === "GET /api/site") {
+    const defaults = { name: "Your Name", tagline: "Creator, developer, and community builder.", about: "Write your story here. This section is fully editable from the owner panel.", youtube: "", discord: "", twitter: "", twitch: "", github: "", email: "", portfolio: [] };
+    const rows = db.prepare("SELECT key, value FROM site_content").all();
+    for (const row of rows) {
+      try { defaults[row.key] = JSON.parse(row.value); } catch { defaults[row.key] = row.value; }
+    }
+    const promotions = db.prepare("SELECT id, name, description, invite_url AS inviteUrl, image_url AS imageUrl, featured, active, created_at AS createdAt FROM promotions WHERE active = 1 ORDER BY featured DESC, created_at DESC").all();
+    json(res, 200, { content: defaults, promotions: promotions.map((row) => ({ ...row, featured: Boolean(row.featured), active: Boolean(row.active) })) });
+    return;
+  }
+
+  if (route === "POST /api/tickets") {
+    const body = await readJson(req);
+    const name = normalizeText(body.name, 80);
+    const email = normalizeText(body.email, 160);
+    const subject = normalizeText(body.subject, 160);
+    const message = normalizeText(body.message, 5000);
+    if (!name || !email.includes("@") || !subject || !message) fail(400, "Complete every ticket field with a valid email address.");
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    db.prepare("INSERT INTO tickets (id,name,email,subject,message,status,created_at,updated_at) VALUES (?,?,?,?,?,'open',?,?)").run(id, name, email, subject, message, now, now);
+    db.prepare("INSERT INTO ticket_messages (id,ticket_id,sender,message,created_at) VALUES (?,?,?,?,?)").run(randomUUID(), id, "visitor", message, now);
+    json(res, 201, { ok: true, ticketId: id });
+    return;
+  }
+
+  if (url.pathname === "/api/promotions" && req.method === "GET") {
+    const promotions = db.prepare("SELECT id,name,description,invite_url AS inviteUrl,image_url AS imageUrl,featured,active,created_at AS createdAt,updated_at AS updatedAt FROM promotions WHERE active = 1 ORDER BY featured DESC, created_at DESC").all();
+    json(res, 200, { promotions: promotions.map((row) => ({ ...row, featured: Boolean(row.featured), active: Boolean(row.active) })) });
+    return;
+  }
+
+  if (url.pathname === "/api/site" && req.method === "PUT"
+      || url.pathname === "/api/promotions" || url.pathname.startsWith("/api/promotions/")
+      || url.pathname.startsWith("/api/tickets")) {
+    const user = currentUser(req);
+    requireUser(user);
+    if (user.roleId !== "owner") fail(403, "Only the Owner can manage the website.");
+    if (req.method !== "GET") checkCsrf(req, user);
+
+    if (url.pathname === "/api/site" && req.method === "PUT") {
+      const body = await readJson(req);
+      const limits = { name: 80, tagline: 180, about: 5000, youtube: 300, discord: 300, twitter: 300, twitch: 300, github: 300, email: 160, portfolio: 20000 };
+      const now = new Date().toISOString();
+      for (const [key, limit] of Object.entries(limits)) {
+        const raw = key === "portfolio" && Array.isArray(body[key]) ? body[key].slice(0, 12) : (typeof body[key] === "string" ? body[key].trim().slice(0, limit) : "");
+        const value = key === "portfolio" && Array.isArray(raw) ? raw.map((item) => ({ title: normalizeText(item?.title, 120), description: normalizeText(item?.description, 1000), link: normalizeText(item?.link, 500), image: normalizeText(item?.image, 500) })) : raw;
+        db.prepare(`INSERT INTO site_content (key,value,updated_at) VALUES (?,?,?)
+          ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`).run(key, JSON.stringify(value), now);
+      }
+      json(res, 200, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/api/promotions" && req.method === "GET") {
+      const promotions = db.prepare("SELECT id,name,description,invite_url AS inviteUrl,image_url AS imageUrl,featured,active,created_at AS createdAt,updated_at AS updatedAt FROM promotions ORDER BY created_at DESC").all();
+      json(res, 200, { promotions: promotions.map((row) => ({ ...row, featured: Boolean(row.featured), active: Boolean(row.active) })) });
+      return;
+    }
+
+    if (url.pathname === "/api/promotions" && req.method === "POST") {
+      const body = await readJson(req);
+      const name = normalizeText(body.name, 120);
+      const inviteUrl = normalizeText(body.inviteUrl, 500);
+      if (!name || !inviteUrl) fail(400, "Enter a name and Discord invite URL.");
+      const now = new Date().toISOString();
+      const id = randomUUID();
+      db.prepare("INSERT INTO promotions (id,name,description,invite_url,image_url,featured,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)")
+        .run(id, name, normalizeText(body.description, 1000), inviteUrl, normalizeText(body.imageUrl, 500), body.featured === true ? 1 : 0, body.active !== false ? 1 : 0, now, now);
+      json(res, 201, { ok: true, id });
+      return;
+    }
+
+    const promoMatch = url.pathname.match(/^\/api\/promotions\/([0-9a-f-]+)$/i);
+    if (promoMatch && req.method === "DELETE") {
+      db.prepare("DELETE FROM promotions WHERE id=?").run(promoMatch[1]);
+      json(res, 200, { ok: true });
+      return;
+    }
+    if (promoMatch && req.method === "PATCH") {
+      const body = await readJson(req);
+      const name = normalizeText(body.name, 120);
+      const inviteUrl = normalizeText(body.inviteUrl, 500);
+      if (!name || !inviteUrl) fail(400, "Enter a name and Discord invite URL.");
+      db.prepare("UPDATE promotions SET name=?,description=?,invite_url=?,image_url=?,featured=?,active=?,updated_at=? WHERE id=?")
+        .run(name, normalizeText(body.description, 1000), inviteUrl, normalizeText(body.imageUrl, 500), body.featured === true ? 1 : 0, body.active !== false ? 1 : 0, new Date().toISOString(), promoMatch[1]);
+      json(res, 200, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/api/tickets" && req.method === "GET") {
+      const tickets = db.prepare("SELECT id,name,email,subject,message,status,created_at AS createdAt,updated_at AS updatedAt FROM tickets ORDER BY created_at DESC LIMIT 200").all();
+      json(res, 200, { tickets });
+      return;
+    }
+    const ticketMatch = url.pathname.match(/^\/api\/tickets\/([0-9a-f-]+)$/i);
+    if (ticketMatch && req.method === "GET") {
+      const ticket = db.prepare("SELECT id,name,email,subject,message,status,created_at AS createdAt,updated_at AS updatedAt FROM tickets WHERE id=?").get(ticketMatch[1]);
+      if (!ticket) fail(404, "Ticket not found.");
+      const messages = db.prepare("SELECT id,sender,message,created_at AS createdAt FROM ticket_messages WHERE ticket_id=? ORDER BY created_at ASC").all(ticketMatch[1]);
+      json(res, 200, { ticket, messages });
+      return;
+    }
+    if (ticketMatch && req.method === "PATCH") {
+      const body = await readJson(req);
+      if (!new Set(["open", "pending", "closed"]).has(body.status)) fail(400, "Invalid ticket status.");
+      db.prepare("UPDATE tickets SET status=?,updated_at=? WHERE id=?").run(body.status, new Date().toISOString(), ticketMatch[1]);
+      json(res, 200, { ok: true });
+      return;
+    }
+    const messageMatch = url.pathname.match(/^\/api\/tickets\/([0-9a-f-]+)\/messages$/i);
+    if (messageMatch && req.method === "POST") {
+      const body = await readJson(req);
+      const message = normalizeText(body.message, 5000);
+      if (!message) fail(400, "Enter a reply.");
+      const now = new Date().toISOString();
+      db.prepare("INSERT INTO ticket_messages (id,ticket_id,sender,message,created_at) VALUES (?,?,?,?,?)").run(randomUUID(), messageMatch[1], "owner", message, now);
+      db.prepare("UPDATE tickets SET status='pending',updated_at=? WHERE id=?").run(now, messageMatch[1]);
+      json(res, 201, { ok: true });
+      return;
+    }
   }
 
   if (route === "POST /api/login") {
