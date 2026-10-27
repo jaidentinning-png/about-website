@@ -137,14 +137,15 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   assert.equal(homepage.status, 200);
   const homepageHtml = await homepage.text();
   assert.match(homepageHtml, /PRIVATE TEAM ACCESS/);
-  assert.match(homepageHtml, /app\.js\?v=6/);
+  assert.match(homepageHtml, /app\.js\?v=7/);
   assert.equal(homepage.headers.get("cache-control"), "no-store");
-  const appScript = await request(base, "/app.js?v=6");
+  const appScript = await request(base, "/app.js?v=7");
   assert.equal(appScript.status, 200);
   assert.equal(appScript.headers.get("cache-control"), "no-store");
   const appScriptText = await appScript.text();
   assert.match(appScriptText, /documents:\s*renderDocuments/);
   assert.match(appScriptText, /"todo-list":\s*renderTodoList/);
+  assert.match(appScriptText, /The portal backend is not connected to this site/);
   const markdownScript = await request(base, "/todo-markdown.js?v=1");
   assert.equal(markdownScript.status, 200);
   assert.match(homepageHtml, /todo-markdown\.js\?v=1/);

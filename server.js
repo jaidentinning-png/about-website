@@ -105,6 +105,16 @@ function checkOrigin(req) {
   } catch {
     fail(403, "This request did not come from the portal.");
   }
+  const trustedOrigin = process.env.TRUSTED_ORIGIN;
+  if (trustedOrigin) {
+    let trusted;
+    try {
+      trusted = new URL(trustedOrigin);
+    } catch {
+      throw new Error("TRUSTED_ORIGIN must be a valid origin URL.");
+    }
+    if (parsed.origin === trusted.origin) return;
+  }
   if (parsed.host !== req.headers.host) {
     fail(403, "This request did not come from the portal.");
   }
@@ -1079,6 +1089,10 @@ const PUBLIC_FILES = new Map([
 async function handleRequest(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    if (url.pathname === "/healthz" && (req.method === "GET" || req.method === "HEAD")) {
+      json(res, 200, { ok: true });
+      return;
+    }
     if (url.pathname.startsWith("/api/")) {
       if (req.method === "OPTIONS") {
         res.writeHead(204, { "Allow": "GET, POST, PATCH, DELETE, OPTIONS" });

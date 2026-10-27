@@ -66,11 +66,21 @@ async function api(url, options = {}) {
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
   });
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    if (url.startsWith("/api/") && response.status === 404) {
+      throw new Error("The portal backend is not connected to this site (API returned 404). Your sign-in was not checked. Deploy the Node portal server and route /api requests to it.");
+    }
+    if (url.startsWith("/api/") && response.status >= 500) {
+      throw new Error(`The portal backend is unavailable (HTTP ${response.status}). Please try again later or contact the Owner.`);
+    }
+    throw new Error(`The portal server returned an unexpected response (HTTP ${response.status}). Please contact the Owner.`);
+  }
   let result = {};
   try {
     result = await response.json();
   } catch {
-    throw new Error("The portal returned an unreadable response. Please refresh and try again.");
+    throw new Error("The portal server returned invalid JSON. Please contact the Owner.");
   }
   if (!response.ok) {
     if (response.status === 401 && state.user) {

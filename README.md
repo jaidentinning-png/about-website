@@ -1,39 +1,46 @@
 # Cartel Empire: Dominion staff portal
 
-A private portal for game staff and developers. It includes a kanban work board, task assignments and due dates, a shared draggable canvas, shared staff to-do list, staff accounts and roles, shared team documents, Robux payroll tracking, task-completion reward automations, and optional Discord webhook notifications.
+A private portal for game staff and developers. It includes a kanban work board, task assignments and due dates, a shared draggable canvas, staff to-do lists with Markdown import, staff accounts and roles, team documents, Robux payroll tracking, task-completion reward automations, and optional Discord notifications.
 
-The portal is a Node.js server and stores its data in a SQLite database file. It does not need a managed database or a third-party authentication service. The database must live on persistent storage attached to the server so every team member sees the same data.
+The repository supports two deployment modes:
+
+- **Vercel + Neon Postgres** for the shared team website. Vercel Functions serve the API and Neon stores shared, persistent data.
+- **Node.js + SQLite** for local development or self-hosting on a server with persistent storage.
+
+There is no public registration or public homepage. Staff accounts must be created by an authorized administrator.
 
 ## Requirements
 
 - Node.js 22.13 or newer (Node 24 LTS recommended).
-- A server or container host that keeps a persistent disk mounted while the app runs.
 - HTTPS in production.
 
-Static hosting, including a typical Vercel static deployment, is not suitable for this setup: its serverless filesystem is not a shared, durable database. Keep the SQLite file on the same persistent disk as the running app. Do not put the database in a public/static folder or commit it to Git.
-
-## Run locally
+## Local development and self-hosting
 
 1. Copy `.env.example` to `.env`.
 2. Set `BOOTSTRAP_OWNER_USERNAME` and a unique `BOOTSTRAP_OWNER_PASSWORD` with at least 12 characters.
 3. Run `npm start`.
 4. Open `http://localhost:3000` and sign in using the bootstrap Owner account.
 
-The first successful sign-in with an issued staff account requires a password change. There is no public registration or public homepage.
+The local server creates `data/portal.sqlite`. Keep `data/` private and backed up. For self-hosting, use a persistent disk; the included Dockerfile and Compose configuration can be used on a server with persistent storage. The Compose file binds the app to `127.0.0.1`; put it behind an HTTPS reverse proxy before sharing the URL.
 
-The first run creates `data/portal.sqlite`. Keep `data/` private and backed up. After the Owner account has been created, the bootstrap credentials are not used again. If the Owner account is lost, stop the app, back up the database, and follow your hosting provider's secure recovery process rather than exposing the database or adding a public reset route.
+## Deploy the shared site with Vercel + Neon
 
-## Deploy for team access
+The Vercel API uses Neon Postgres and initializes the required tables and initial Owner account on first request. No separate API host is required.
 
-Use the included Dockerfile or Compose configuration on a host that supports a persistent volume. For the first Compose launch, put your bootstrap credentials in the private `.env` file and run `docker compose up --build -d`. The Compose file keeps SQLite in a named persistent volume and binds the app to `127.0.0.1`; put it behind an HTTPS reverse proxy before sharing the URL. The app listens on `PORT` (3000 by default) and stores its database under `DATA_DIR` (default `data/`). Bootstrap credentials may be removed from the environment after the Owner account has been created.
+1. Import this repository into Vercel and deploy it using the default Node.js project settings.
+2. In Vercel, add the **Neon** integration from the Vercel Marketplace and connect a Neon project/database to this Vercel project. Make sure a Postgres connection string is available as `DATABASE_URL` (the API also accepts `POSTGRES_URL`).
+3. In the Vercel project's Environment Variables, set:
+   - `BOOTSTRAP_OWNER_USERNAME` — 3-24 letters, numbers, dots, underscores, or hyphens.
+   - `BOOTSTRAP_OWNER_PASSWORD` — a unique password with at least 12 characters.
+   - `TRUSTED_ORIGIN` — the exact public origin, for example `https://jaitinn.site`.
+   - Optionally, `DISCORD_WEBHOOK_URL` for task-completion notifications.
+4. Apply these variables to Production and any Preview environments where you will sign in. Keep database and bootstrap credentials private; never add them to frontend code or commit them.
+5. Redeploy after connecting the database and adding environment variables.
+6. Open the production site and sign in using the bootstrap Owner credentials. After verifying the account works, remove `BOOTSTRAP_OWNER_PASSWORD` from Vercel. The Owner account remains in Neon; the bootstrap credential is only used when the database has no users.
 
-For local development, use `npm start` after setting the Owner username and a unique password in `.env`. Do not bind the database directory to a public web path. Keep at least one off-host backup and periodically test restoring it.
+If sign-in returns an API configuration error, check the Vercel Function logs and confirm that `DATABASE_URL` (or `POSTGRES_URL`) is available to the deployment. The API does not proxy to another host. The portal's database is not stored on Vercel's temporary filesystem.
 
-To run without Docker, set environment variables directly in your process manager and run `npm start`. The provided `.env` loading is for local development; production secrets should be configured in the hosting platform.
-
-### Optional Discord notifications
-
-Set `DISCORD_WEBHOOK_URL` in the server environment to a Discord webhook URL. The portal sends a short notice when a task is completed. This is optional; task updates still save if Discord is unavailable, and the portal reports the notification failure. Never add a webhook secret to frontend code or commit it.
+Vercel + Neon uses a separate database from any local `data/portal.sqlite` file. Local SQLite records are not automatically copied to Neon.
 
 ## Roles and workflow
 
@@ -48,14 +55,14 @@ Set `DISCORD_WEBHOOK_URL` in the server environment to a Discord webhook URL. Th
 
 ## Security and operations
 
-- Sessions use HTTP-only, same-site cookies; state-changing requests require a session CSRF token.
+- Sessions use HTTP-only, same-site cookies; state-changing requests require a session CSRF token and same-site origin validation.
 - Passwords are stored as scrypt hashes. Login attempts are rate-limited.
-- Use a unique bootstrap password and keep all environment secrets private.
-- Keep the persistent disk private, encrypted where available, and restrict shell/host access. Do not share the database file with staff.
-- Make database backups on the server and store backups in a separate private location. Stop the app before copying the SQLite database file so its write-ahead log is checkpointed.
+- Keep database and bootstrap credentials private. In Vercel, scope them to only the environments that need them.
+- Neon is the persistent shared database for Vercel deployments. Use the database provider's backup and recovery options.
+- For SQLite self-hosting, keep the persistent disk private, encrypted where available, and restrict shell/host access. Make backups in a separate private location and periodically test restoring them.
 - All staff use the same hosted instance and URL; browser storage is not used for shared records.
 
 ## Development
 
-- `npm test` runs the backend integration tests against a temporary database.
-- `npm run dev` restarts the server when source files change.
+- `npm test` runs the SQLite integration tests and checks the Vercel API's unconfigured and preflight responses.
+- `npm run dev` restarts the local SQLite server when source files change.
