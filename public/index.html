@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111312">
+  <title>Cartel Empire: Dominion | Staff Portal</title>
+  <link rel="stylesheet" href="/styles.css?v=6">
+  <script src="/todo-markdown.js?v=1" defer></script>
+  <script src="/app.js?v=6" defer></script>
+</head>
+<body>
+  <main id="loginScreen" class="loginScreen">
+    <div class="loginBackdrop" aria-hidden="true"></div>
+    <a class="brand brandLogin" href="/" aria-label="Cartel Empire: Dominion staff portal">
+      <span class="brandMark">CE</span>
+      <span><strong>Cartel Empire</strong><small>DOMINION STAFF PORTAL</small></span>
+    </a>
+    <section class="loginCard" aria-labelledby="loginTitle">
+      <p class="eyebrow">PRIVATE TEAM ACCESS</p>
+      <h1 id="loginTitle">Welcome back.</h1>
+      <p class="muted">Sign in to your Cartel Empire: Dominion workspace.</p>
+      <form id="loginForm" class="stackForm">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required maxlength="24">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <p id="loginError" class="formError" role="alert" hidden></p>
+        <button class="button buttonPrimary buttonWide" type="submit">Sign in <span aria-hidden="true">→</span></button>
+      </form>
+      <p class="loginFoot">Accounts are issued by the Owner or an HR administrator.</p>
+    </section>
+    <span class="loginVersion">CARTEL EMPIRE: DOMINION <i>·</i> INTERNAL USE</span>
+  </main>
+
+  <div id="portalScreen" class="portalScreen" hidden>
+    <aside class="sidebar">
+      <a class="brand sideBrand" href="/" aria-label="Cartel Empire: Dominion">
+        <span class="brandMark">CE</span>
+        <span><strong>Cartel Empire</strong><small>DOMINION</small></span>
+      </a>
+      <div class="workspaceLabel">YOUR WORKSPACE</div>
+      <nav id="mainNav" class="mainNav" aria-label="Workspace">
+        <button class="navItem active" data-tab="board"><span>▦</span> Work board</button>
+        <button class="navItem" data-tab="canvas"><span>◇</span> Team canvas</button>
+        <button class="navItem" data-tab="payroll"><span>◈</span> Robux payroll</button>
+        <button class="navItem" data-tab="staff" data-permission="manageAccounts"><span>♙</span> Staff &amp; accounts</button>
+        <button class="navItem" data-tab="automations" data-permission="manageAutomations"><span>↻</span> Automations</button>
+        <button class="navItem" data-tab="documents"><span>▤</span> Documents</button>
+        <button class="navItem" data-tab="todo-list"><span>≡</span> To-do list</button>
+        <button class="navItem" data-tab="roles" data-permission="manageRoles"><span>♧</span> Roles &amp; access</button>
+      </nav>
+      <div class="sidebarBottom">
+        <div class="workspaceStatus"><span class="statusDot"></span><span>Private workspace</span></div>
+        <div class="sidebarGame">CARTEL EMPIRE <b>·</b> DOMINION</div>
+      </div>
+    </aside>
+
+    <section class="mainArea">
+      <header class="topbar">
+        <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="currentSection">Work board</strong></div>
+        <div class="topbarRight">
+          <div class="userBadge"><span id="avatarInitials" class="avatar">CE</span><span><strong id="userDisplayName"></strong><small id="userRole"></small></span></div>
+          <button class="button buttonSmall buttonQuiet" type="button" data-action="change-password">Password</button>
+          <button id="logoutButton" class="iconButton" type="button" aria-label="Sign out" title="Sign out" data-action="logout">↗</button>
+        </div>
+      </header>
+      <main id="content" class="content" tabindex="-1"></main>
+    </section>
+  </div>
+
+  <dialog id="dialog" class="dialog">
+    <form method="dialog" class="dialogCloseWrap"><button class="dialogClose" aria-label="Close dialog">×</button></form>
+    <div id="dialogContent"></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

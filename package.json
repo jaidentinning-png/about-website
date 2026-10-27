@@ -1,0 +1,14 @@
+{
+  "name": "cartel-empire-dominion-staff-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Private staff and development portal for Cartel Empire: Dominion",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --env-file-if-exists=.env --watch server.js",
+    "test": "node --test"
+  }
+}

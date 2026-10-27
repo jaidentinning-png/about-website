@@ -1,0 +1,20 @@
+services:
+  portal:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATA_DIR: /app/data
+      BOOTSTRAP_OWNER_USERNAME: ${BOOTSTRAP_OWNER_USERNAME:-}
+      BOOTSTRAP_OWNER_PASSWORD: ${BOOTSTRAP_OWNER_PASSWORD:-}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    volumes:
+      - portal-data:/app/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  portal-data:
