@@ -27,6 +27,7 @@ const TABS = {
   automations: "Automations",
   documents: "Documents",
   "todo-list": "To-do list",
+  "game-staff": "Game Staff Panel",
   roles: "Roles & access"
 };
 const TODO_ITEM_STATUSES = [
@@ -215,9 +216,66 @@ function renderTab() {
     automations: renderAutomations,
     documents: renderDocuments,
     "todo-list": renderTodoList,
+    "game-staff": renderGameStaff,
     roles: renderRoles
   };
   $("#content").innerHTML = renderers[state.tab]();
+}
+
+function renderGameStaff() {
+  return `
+    <div class="pageHeading">
+      <div><p class="eyebrowMuted">GAME OPERATIONS</p><h1>Game Staff Panel</h1><p>Moderation, player activity, and live game operations in one place.</p></div>
+      <span class="gamePreviewBadge">PREVIEW ONLY</span>
+    </div>
+    <section class="gameConnectionNotice" aria-label="Roblox connection status">
+      <span class="gameConnectionDot" aria-hidden="true"></span>
+      <div><strong>Roblox is not connected</strong><p>This panel is a visual preview. It shows no live game data, and no actions are sent to Roblox.</p></div>
+    </section>
+    <section class="summaryGrid gameSummaryGrid" aria-label="Game status">
+      <div class="summaryCard"><span>Live servers</span><strong>—<small>not connected</small></strong></div>
+      <div class="summaryCard"><span>Players online</span><strong>—<small>not connected</small></strong></div>
+      <div class="summaryCard"><span>Moderation activity</span><strong>—<small>no live data</small></strong></div>
+    </section>
+    <div class="gameStaffGrid">
+      <section class="panel gamePanel">
+        <div class="gamePanelHeading"><div><p class="eyebrowMuted">PLAYER SAFETY</p><h2>Moderation</h2></div><span class="previewTag">PREVIEW</span></div>
+        <p>Planned tools for authorized staff. These controls are disabled and cannot affect players.</p>
+        <label class="gameFieldLabel" for="gamePlayerLookup">Roblox username or user ID</label>
+        <input id="gamePlayerLookup" type="text" placeholder="Waiting for Roblox connection" disabled>
+        <div class="gameActionRow" aria-label="Preview moderation actions">
+          <button class="button" type="button" disabled title="Unavailable in preview">Warn</button>
+          <button class="button" type="button" disabled title="Unavailable in preview">Kick</button>
+          <button class="button" type="button" disabled title="Unavailable in preview">Ban</button>
+        </div>
+        <div class="gameFeatureList"><span>Temporary and permanent bans</span><span>Warnings and kick history</span><span>Reason, evidence, and staff audit trail</span></div>
+      </section>
+      <section class="panel gamePanel">
+        <div class="gamePanelHeading"><div><p class="eyebrowMuted">LIVE OPERATIONS</p><h2>Global announcement</h2></div><span class="previewTag">PREVIEW</span></div>
+        <p>Draft an announcement to send to every active server. Sending is unavailable in preview.</p>
+        <label class="srOnly" for="gameAnnouncement">Announcement message</label>
+        <textarea id="gameAnnouncement" placeholder="Announcement composer will be available after connection" disabled></textarea>
+        <div class="gameActionRow"><button class="button" type="button" disabled title="Unavailable in preview">Send to all servers</button></div>
+        <div class="gameFeatureList"><span>Global and server-targeted messages</span><span>Staff attribution and delivery history</span></div>
+      </section>
+      <section class="panel gamePanel gameWidePanel">
+        <div class="gamePanelHeading"><div><p class="eyebrowMuted">LIVE INSTANCES</p><h2>Server list</h2></div><span class="previewTag">NO LIVE DATA</span></div>
+        <p>Server health, region, player count, uptime, and instance actions will appear here after an authorized connection.</p>
+        <div class="gameEmptyState">Server data will appear when Roblox is connected.</div>
+      </section>
+      <section class="panel gamePanel gameWidePanel">
+        <div class="gamePanelHeading"><div><p class="eyebrowMuted">PLAYER DIRECTORY</p><h2>Players &amp; members</h2></div><span class="previewTag">NO LIVE DATA</span></div>
+        <p>Find a player across servers and review their profile, session, and moderation history.</p>
+        <label class="srOnly" for="gameMemberSearch">Search players</label>
+        <input id="gameMemberSearch" type="search" placeholder="Player search will be available after connection" disabled>
+        <div class="gameEmptyState">Player list and online member count are not available in preview.</div>
+      </section>
+      <section class="panel gamePanel gameWidePanel">
+        <div class="gamePanelHeading"><div><p class="eyebrowMuted">STAFF AUDIT</p><h2>Recent activity</h2></div><span class="previewTag">NO LIVE DATA</span></div>
+        <p>Review who performed an action, when it happened, and which player or server was affected.</p>
+        <div class="gameEmptyState">Moderation and announcement logs are not connected.</div>
+      </section>
+    </div>`;
 }
 
 function renderDiscordConnect() {

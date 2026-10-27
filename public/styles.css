@@ -157,6 +157,29 @@ tr:last-child td { border-bottom: 0; }
 .panelForm label { display: grid; gap: 6px; color: #9da59c; font-size: 10px; font-weight: 600; }
 .panelForm input, .panelForm select, .panelForm textarea { padding: 10px; font-size: 11px; }
 .panelForm .button { margin-top: 2px; }
+.gamePreviewBadge, .previewTag { display: inline-flex; align-items: center; padding: 6px 9px; border: 1px solid #55462d; border-radius: 4px; color: #d3b46b; font-size: 9px; font-weight: 700; letter-spacing: .1em; white-space: nowrap; }
+.gameConnectionNotice { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; padding: 14px 16px; border: 1px solid #51432d; border-radius: 7px; background: #1a1713; }
+.gameConnectionDot { width: 8px; height: 8px; flex: 0 0 auto; margin-top: 4px; border-radius: 50%; background: #b28b47; }
+.gameConnectionNotice strong { font-size: 11px; }
+.gameConnectionNotice p { margin: 5px 0 0; color: #aaa194; font-size: 10px; line-height: 1.55; }
+.gameSummaryGrid { margin-bottom: 18px; }
+.gameStaffGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.gamePanel { min-width: 0; }
+.gamePanelHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.gamePanelHeading .eyebrowMuted { margin-bottom: 6px; }
+.gamePanelHeading h2 { font-size: 14px; }
+.gamePanel .previewTag { padding: 4px 6px; color: #a79a7c; font-size: 8px; }
+.gamePanel .gameFieldLabel { display: block; margin: 12px 0 6px; color: #9da59c; font-size: 10px; font-weight: 600; }
+.gamePanel input, .gamePanel textarea { padding: 10px; font-size: 10px; }
+.gamePanel input:disabled, .gamePanel textarea:disabled { opacity: .68; cursor: not-allowed; }
+.gamePanel input:disabled::placeholder, .gamePanel textarea:disabled::placeholder { color: #77716b; }
+.gameActionRow { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.gameActionRow .button:disabled { border-color: #3a3532; background: #201e1d; color: #817a72; cursor: not-allowed; transform: none; }
+.gameFeatureList { display: grid; gap: 7px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #302b2b; }
+.gameFeatureList span { color: #959087; font-size: 9px; line-height: 1.5; }
+.gameFeatureList span::before { margin-right: 7px; color: #a48a56; content: "·"; }
+.gameWidePanel { grid-column: 1 / -1; }
+.gameEmptyState { margin-top: 12px; padding: 15px; border: 1px dashed #393332; border-radius: 5px; color: #858078; font-size: 10px; line-height: 1.6; text-align: center; }
 .listStack { display: grid; gap: 9px; }
 .listRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid #342d30; border-radius: 6px; background: #1a1719; }
 .listRow strong, .listRow small { display: block; }
@@ -276,6 +299,8 @@ tr:last-child td { border-bottom: 0; }
   .summaryCard strong { margin-top: 8px; font-size: 19px; }
   .boardGrid { grid-template-columns: 1fr; }
   .panelGrid { grid-template-columns: 1fr; }
+  .gameStaffGrid { grid-template-columns: 1fr; }
+  .gameWidePanel { grid-column: auto; }
   .payrollForm { grid-template-columns: 1fr; }
   .todoMain { align-items: flex-start; flex-direction: column; }
   .todoControls { width: 100%; flex-wrap: wrap; }
