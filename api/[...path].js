@@ -7,6 +7,14 @@ const {
 } = require("node:crypto");
 const { promisify } = require("node:util");
 const { neon } = require("@neondatabase/serverless");
+const {
+  authorizationUrl,
+  createPkcePair,
+  exchangeCode,
+  fetchIdentityAndGuilds,
+  readConfig,
+  snowflakeCreatedAt
+} = require("../discord-oauth");
 
 const scrypt = promisify(scryptCallback);
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -139,6 +147,19 @@ function can(user, permission) {
   return user.roleId === "owner" || user.permissions?.[permission] === true;
 }
 
+function redirect(response, location) {
+  response.setHeader("Location", location);
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Referrer-Policy", "no-referrer");
+  return response.status(303).end();
+}
+
+function discordResultUrl(config, result) {
+  const url = new URL("/", config.redirectUri);
+  url.searchParams.set("discord", result);
+  return url.toString();
+}
+
 function requirePermission(user, permission) {
   requireUser(user);
   if (!can(user, permission)) fail(403, "You do not have permission to do that.");
@@ -152,6 +173,12 @@ function requireUser(user) {
 function requireChangedPassword(user, pathname) {
   if (user.mustChangePassword && !["/api/password", "/api/logout", "/api/me"].includes(pathname)) {
     fail(428, "Change your temporary password before using the portal.");
+  }
+}
+
+function requireDiscordLinked(user, pathname) {
+  if (!user.discordId && !["/api/discord/authorize", "/api/password"].includes(pathname)) {
+    fail(428, "Connect your Discord account before using the workspace.");
   }
 }
 
@@ -189,14 +216,30 @@ async function ensureSchema() {
         role_id TEXT NOT NULL REFERENCES roles(id),
         active BOOLEAN NOT NULL DEFAULT TRUE,
         must_change_password BOOLEAN NOT NULL DEFAULT TRUE,
+        discord_id TEXT,
+        discord_username TEXT,
+        discord_avatar TEXT,
+        discord_linked_at TEXT,
+        discord_guilds JSONB NOT NULL DEFAULT '[]'::jsonb,
         created_at TEXT NOT NULL
       )`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS discord_id TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS discord_username TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS discord_avatar TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS discord_linked_at TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS discord_guilds JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique_idx ON users(discord_id) WHERE discord_id IS NOT NULL`,
       `CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (lower(username))`,
       `CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         csrf_token TEXT NOT NULL, expires_at BIGINT NOT NULL
       )`,
       `CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id)`,
+      `CREATE TABLE IF NOT EXISTS discord_oauth_states (
+        state_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        session_hash TEXT NOT NULL REFERENCES sessions(token_hash) ON DELETE CASCADE,
+        code_verifier TEXT NOT NULL, expires_at BIGINT NOT NULL
+      )`,
       `CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo','in_progress','done')),
@@ -297,7 +340,8 @@ async function currentUser(request) {
   if (!token) return null;
   const rows = await sql.query(
     `SELECT s.csrf_token, s.expires_at, u.id, u.username, u.display_name,
-            u.role_id, u.active, u.must_change_password, r.name AS role_name,
+            u.role_id, u.active, u.must_change_password, u.discord_id,
+            r.name AS role_name,
             r.permissions
      FROM sessions s JOIN users u ON u.id = s.user_id
      JOIN roles r ON r.id = u.role_id WHERE s.token_hash = $1`,
@@ -314,6 +358,7 @@ async function currentUser(request) {
     roleName: row.role_name,
     active: row.active,
     mustChangePassword: row.must_change_password,
+    discordId: row.discord_id,
     permissions,
     csrfToken: row.csrf_token
   };
@@ -332,12 +377,72 @@ async function createSession(userId) {
 async function staffList(includeDisabled = false) {
   const rows = await sql.query(
     `SELECT u.id, u.username, u.display_name AS "displayName",
-            u.role_id AS "roleId", r.name AS "roleName", u.active
+            u.role_id AS "roleId", r.name AS "roleName", u.active,
+            (u.discord_id IS NOT NULL) AS "discordLinked"
      FROM users u JOIN roles r ON r.id = u.role_id
      ${includeDisabled ? "" : "WHERE u.active = TRUE"}
      ORDER BY r.name, u.display_name`
   );
   return rows;
+}
+
+async function staffOverview(user, staffId) {
+  requirePermission(user, "manageAccounts");
+  const targets = await sql.query(
+    `SELECT u.id, u.username, u.display_name AS "displayName", u.role_id AS "roleId",
+            r.name AS "roleName", u.active, u.created_at AS "createdAt",
+            u.discord_id AS "discordId", u.discord_username AS "discordUsername",
+            u.discord_avatar AS "discordAvatar", u.discord_linked_at AS "discordLinkedAt",
+            u.discord_guilds AS "discordGuilds"
+     FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`,
+    [staffId]
+  );
+  const target = targets[0];
+  if (!target) fail(404, "That staff account could not be found.");
+  const [tasks, payroll, documents] = await Promise.all([
+    sql.query(
+      `SELECT id, title, description, status, due_date AS "dueDate", created_at AS "createdAt"
+       FROM tasks WHERE assignee_id = $1 ORDER BY created_at DESC LIMIT 100`,
+      [staffId]
+    ),
+    can(user, "managePayroll") || can(user, "viewAllPayroll")
+      ? sql.query(
+        `SELECT id, amount, note, status, created_at AS "createdAt"
+         FROM payroll WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
+        [staffId]
+      )
+      : Promise.resolve([]),
+    sql.query(
+      `SELECT id, title, content, created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM documents WHERE created_by = $1 ORDER BY updated_at DESC LIMIT 100`,
+      [staffId]
+    )
+  ]);
+  const guilds = typeof target.discordGuilds === "string"
+    ? JSON.parse(target.discordGuilds)
+    : target.discordGuilds;
+  return {
+    canViewPayroll: can(user, "managePayroll") || can(user, "viewAllPayroll"),
+    staff: {
+      id: target.id,
+      username: target.username,
+      displayName: target.displayName,
+      roleName: target.roleName,
+      active: target.active,
+      createdAt: target.createdAt
+    },
+    discord: target.discordId ? {
+      id: target.discordId,
+      username: target.discordUsername,
+      avatar: target.discordAvatar,
+      linkedAt: target.discordLinkedAt,
+      accountCreatedAt: snowflakeCreatedAt(target.discordId),
+      guilds: Array.isArray(guilds) ? guilds : []
+    } : null,
+    tasks,
+    payroll,
+    documents
+  };
 }
 
 async function boardData(user) {
@@ -473,6 +578,52 @@ async function handle(request, response) {
       });
     }
 
+    if (request.method === "GET" && path === "/api/discord/callback") {
+      const config = readConfig();
+      const callbackUrl = (result) => discordResultUrl(config, result);
+      const callback = new URL(request.url, "https://vercel.invalid");
+      const state = callback.searchParams.get("state") || "";
+      const code = callback.searchParams.get("code") || "";
+      if (!state) return redirect(response, callbackUrl("invalid"));
+      const stateHash = hash(state);
+      const stateRows = await sql.query(
+        `SELECT o.user_id, o.code_verifier, o.expires_at
+         FROM discord_oauth_states o JOIN sessions s ON s.token_hash = o.session_hash
+         JOIN users u ON u.id = o.user_id
+         WHERE o.state_hash = $1 AND s.user_id = o.user_id AND s.expires_at > $2 AND u.active = TRUE`,
+        [stateHash, Date.now()]
+      );
+      const oauthState = stateRows[0];
+      await sql.query("DELETE FROM discord_oauth_states WHERE state_hash = $1", [stateHash]);
+      if (!oauthState || Number(oauthState.expires_at) < Date.now()) {
+        return redirect(response, callbackUrl("expired"));
+      }
+      if (callback.searchParams.has("error") || !code) return redirect(response, callbackUrl("cancelled"));
+      try {
+        const accessToken = await exchangeCode(config, code, oauthState.code_verifier);
+        const discord = await fetchIdentityAndGuilds(accessToken);
+        const updated = await sql.query(
+          `UPDATE users SET discord_id = $1, discord_username = $2, discord_avatar = $3,
+            discord_linked_at = $4, discord_guilds = $5::jsonb
+           WHERE id = $6 AND active = TRUE AND must_change_password = FALSE RETURNING id`,
+          [
+            discord.id,
+            discord.username,
+            discord.avatar,
+            new Date().toISOString(),
+            JSON.stringify(discord.guilds),
+            oauthState.user_id
+          ]
+        );
+        if (!updated.length) return redirect(response, callbackUrl("expired"));
+        return redirect(response, callbackUrl("linked"));
+      } catch (error) {
+        if (error.code === "23505") return redirect(response, callbackUrl("already-linked"));
+        console.error("Discord OAuth callback failed:", error);
+        return redirect(response, callbackUrl("failed"));
+      }
+    }
+
     if (request.method === "GET" && path === "/api/me") {
       const user = await currentUser(request);
       requireUser(user);
@@ -484,7 +635,8 @@ async function handle(request, response) {
           roleId: user.roleId,
           roleName: user.roleName,
           permissions: user.permissions,
-          mustChangePassword: user.mustChangePassword
+          mustChangePassword: user.mustChangePassword,
+          discordLinked: Boolean(user.discordId)
         },
         csrfToken: user.csrfToken
       });
@@ -501,6 +653,26 @@ async function handle(request, response) {
     const user = await currentUser(request);
     requireUser(user);
     requireChangedPassword(user, path);
+    requireDiscordLinked(user, path);
+
+    if (request.method === "GET" && path === "/api/discord/authorize") {
+      const config = readConfig();
+      const sessionToken = cookieToken(request);
+      const state = randomBytes(32).toString("base64url");
+      const { verifier, challenge } = createPkcePair();
+      await sql.query("DELETE FROM discord_oauth_states WHERE expires_at <= $1", [Date.now()]);
+      await sql.query(
+        `INSERT INTO discord_oauth_states (state_hash, user_id, session_hash, code_verifier, expires_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [hash(state), user.id, hash(sessionToken), verifier, Date.now() + 10 * 60 * 1000]
+      );
+      return redirect(response, authorizationUrl({
+        clientId: config.clientId,
+        redirectUri: config.redirectUri,
+        state,
+        challenge
+      }));
+    }
 
     if (request.method === "POST" && path === "/api/password") {
       verifyCsrf(request, user);
@@ -545,6 +717,29 @@ async function handle(request, response) {
       return json(response, 201, { ok: true, username, temporaryPassword: password });
     }
 
+    const accountMenuRoute = path.match(/^\/api\/accounts\/([0-9a-f-]{36})\/menu$/i);
+    if (accountMenuRoute && request.method === "GET") {
+      return json(response, 200, await staffOverview(user, accountMenuRoute[1]));
+    }
+
+    const unlinkDiscordRoute = path.match(/^\/api\/accounts\/([0-9a-f-]{36})\/unlink-discord$/i);
+    if (unlinkDiscordRoute && request.method === "POST") {
+      verifyCsrf(request, user);
+      requirePermission(user, "manageAccounts");
+      const targetRows = await sql.query("SELECT id, role_id FROM users WHERE id = $1", [unlinkDiscordRoute[1]]);
+      const target = targetRows[0];
+      if (!target || target.role_id === "owner" || target.id === user.id) {
+        fail(404, "That staff account cannot be unlinked.");
+      }
+      await sql.query(
+        `UPDATE users SET discord_id = NULL, discord_username = NULL, discord_avatar = NULL,
+          discord_linked_at = NULL, discord_guilds = '[]'::jsonb WHERE id = $1`,
+        [target.id]
+      );
+      await sql.query("DELETE FROM sessions WHERE user_id = $1", [target.id]);
+      return json(response, 200, { ok: true });
+    }
+
     const accountRoute = path.match(/^\/api\/accounts\/([0-9a-f-]{36})(?:\/(reset-password))?$/i);
     if (accountRoute && request.method === "POST" && accountRoute[2] === "reset-password") {
       verifyCsrf(request, user);
@@ -564,20 +759,25 @@ async function handle(request, response) {
     if (accountRoute && request.method === "PATCH" && !accountRoute[2]) {
       verifyCsrf(request, user);
       requirePermission(user, "manageAccounts");
-      const rows = await sql.query("SELECT id, role_id, active FROM users WHERE id = $1", [accountRoute[1]]);
+      const rows = await sql.query("SELECT id, role_id, active, display_name FROM users WHERE id = $1", [accountRoute[1]]);
       const target = rows[0];
       if (!target || target.role_id === "owner" || target.id === user.id) fail(404, "That staff account could not be changed.");
       const body = readBody(request);
-      if (body.active === undefined && body.roleId === undefined) fail(400, "Choose an account status or role.");
+      if (body.active === undefined && body.roleId === undefined && body.displayName === undefined) fail(400, "Choose an account detail to update.");
       const active = body.active === undefined ? target.active : body.active;
       if (typeof active !== "boolean") fail(400, "Choose whether the account should be active.");
+      const displayName = body.displayName === undefined ? target.display_name : text(body.displayName, 50);
+      if (body.displayName !== undefined && !displayName) fail(400, "Enter a display name.");
       let roleId = target.role_id;
       if (body.roleId !== undefined) {
         const role = await sql.query("SELECT id FROM roles WHERE id = $1", [body.roleId]);
         if (!role.length || body.roleId === "owner") fail(400, "Choose a staff role other than Owner.");
         roleId = body.roleId;
       }
-      await sql.query("UPDATE users SET active = $1, role_id = $2 WHERE id = $3", [active, roleId, target.id]);
+      await sql.query(
+        "UPDATE users SET active = $1, role_id = $2, display_name = $3 WHERE id = $4",
+        [active, roleId, displayName, target.id]
+      );
       if (!active) await sql.query("DELETE FROM sessions WHERE user_id = $1", [target.id]);
       return json(response, 200, { ok: true });
     }

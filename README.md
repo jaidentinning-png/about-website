@@ -16,8 +16,8 @@ There is no public registration or public homepage. Staff accounts must be creat
 
 ## Local development and self-hosting
 
-1. Copy `.env.example` to `.env`.
-2. Set `BOOTSTRAP_OWNER_USERNAME` and a unique `BOOTSTRAP_OWNER_PASSWORD` with at least 12 characters.
+1. Keep using your existing `.env` file. Do not create a second one or overwrite your current values.
+2. Add any missing settings shown in `.env.example` to that same `.env`, especially `BOOTSTRAP_OWNER_USERNAME` and a unique `BOOTSTRAP_OWNER_PASSWORD` with at least 12 characters. For local Discord linking, also fill in the three Discord OAuth settings using a callback URL registered with Discord.
 3. Run `npm start`.
 4. Open `http://localhost:3000` and sign in using the bootstrap Owner account.
 
@@ -27,16 +27,22 @@ The local server creates `data/portal.sqlite`. Keep `data/` private and backed u
 
 The Vercel API uses Neon Postgres and initializes the required tables and initial Owner account on first request. Explicit Vercel function routes cover nested API paths such as task edits and bulk to-do imports. No separate API host is required.
 
-1. Import this repository into Vercel and deploy it using the default Node.js project settings.
-2. In Vercel, add the **Neon** integration from the Vercel Marketplace and connect a Neon project/database to this Vercel project. Make sure a Postgres connection string is available as `DATABASE_URL` (the API also accepts `POSTGRES_URL`).
-3. In the Vercel project's Environment Variables, set:
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), create an application. Under **OAuth2 → General**, copy its Client ID and create/copy a Client Secret. Under **OAuth2 → Redirects**, add the exact callback URL `https://jaitinn.site/api/discord/callback` (use your production domain). A bot or server installation is not needed.
+2. Import this repository into Vercel and deploy it using the default Node.js project settings.
+3. In Vercel, add the **Neon** integration from the Vercel Marketplace and connect a Neon project/database to this Vercel project. Make sure a Postgres connection string is available as `DATABASE_URL` (the API also accepts `POSTGRES_URL`).
+4. In the Vercel project's **one Environment Variables page**, add each required variable once for the Production environment:
    - `BOOTSTRAP_OWNER_USERNAME` — 3-24 letters, numbers, dots, underscores, or hyphens.
    - `BOOTSTRAP_OWNER_PASSWORD` — a unique password with at least 12 characters.
    - `TRUSTED_ORIGIN` — the exact public origin, for example `https://jaitinn.site`.
+   - `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` — from the Discord application.
+   - `DISCORD_REDIRECT_URI` — exactly `https://jaitinn.site/api/discord/callback`.
    - Optionally, `DISCORD_WEBHOOK_URL` for task-completion notifications.
-4. Apply these variables to Production and any Preview environments where you will sign in. Keep database and bootstrap credentials private; never add them to frontend code or commit them.
-5. Redeploy after connecting the database and adding environment variables.
-6. Open the production site and sign in using the bootstrap Owner credentials. After verifying the account works, remove `BOOTSTRAP_OWNER_PASSWORD` from Vercel. The Owner account remains in Neon; the bootstrap credential is only used when the database has no users.
+5. These settings are stored by Vercel, not in a local `.env` file. You do not need to recreate or refill them for each deployment; they remain attached to the Production environment. Keep database, OAuth, and bootstrap credentials private; never add them to frontend code or commit them.
+6. Redeploy after connecting the database and adding environment variables.
+7. Open the production site and sign in using the bootstrap Owner credentials. After verifying the account works, remove `BOOTSTRAP_OWNER_PASSWORD` from Vercel. The Owner account remains in Neon; the bootstrap credential is only used when the database has no users.
+8. Connect Discord when the portal prompts. Existing and newly created accounts without a Discord link must connect before using the workspace.
+
+The OAuth prompt requests only `identify` and `guilds`; it does not request message access. The portal stores the Discord ID, username, avatar hash, link time, and server names/IDs returned when the user links. The authorized access token is not stored. Server membership is a snapshot from link time and is refreshed by linking again. HR/Owner can open **Staff & accounts**, click a person's **Actions** button or right-click their row, then use **User Menu** to see their Discord ID, username, Discord account creation date, portal account creation date, and linked server list. Other menu actions include assigned tasks, payroll, authored documents, account controls, and Discord unlinking.
 
 If sign-in returns an API configuration error, check the Vercel Function logs and confirm that `DATABASE_URL` (or `POSTGRES_URL`) is available to the deployment. The API does not proxy to another host. The portal's database is not stored on Vercel's temporary filesystem.
 
@@ -56,6 +62,7 @@ The SQL updates Owner password hashes, invalidates their sessions, and clears lo
 
 - **Owner** is the site superadmin and can manage all roles, accounts, tasks, payroll, and automations.
 - **HR** is the highest staff rank and can create/reset staff accounts, manage tasks and canvas cards, and manage Robux payroll and automations.
+- Each active staff account must connect its own Discord account before entering the workspace. HR/Owner can use the staff context menu to view the linked profile and server-membership snapshot.
 - Documents are visible to all active staff; the Owner and HR can post, edit, and delete them. The Owner can grant document-management permission to other roles.
 - HR/Owner can post, edit, and delete shared to-do items. They can add items one at a time or paste a Markdown list; headings automatically become sections and bullets become separate items. All staff can change each item's status to Not done, In progress, or Done.
 - Other roles can be granted permissions by the Owner. Staff can create tasks for themselves and update tasks assigned to them or created by them.
@@ -66,6 +73,7 @@ The SQL updates Owner password hashes, invalidates their sessions, and clears lo
 ## Security and operations
 
 - Sessions use HTTP-only, same-site cookies; state-changing requests require a session CSRF token and same-site origin validation.
+- Discord OAuth uses one-time state and PKCE; the portal does not retain Discord access or refresh tokens.
 - Passwords are stored as scrypt hashes. Login attempts are rate-limited.
 - Keep database and bootstrap credentials private. In Vercel, scope them to only the environments that need them.
 - Neon is the persistent shared database for Vercel deployments. Use the database provider's backup and recovery options.

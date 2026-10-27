@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { once } = require("node:events");
 const test = require("node:test");
+const { DatabaseSync } = require("node:sqlite");
 const { parseTodoMarkdown } = require("../public/todo-markdown.js");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -80,7 +81,8 @@ async function request(base, route, options = {}) {
   return fetch(`${base}${route}`, {
     method: options.method || "GET",
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body)
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    redirect: options.redirect || "follow"
   });
 }
 
@@ -116,7 +118,10 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
         PORT: "0",
         DATA_DIR: dataDir,
         BOOTSTRAP_OWNER_USERNAME: bootstrap ? "portalowner" : "",
-        BOOTSTRAP_OWNER_PASSWORD: bootstrap ? "test-owner-password-that-is-long" : ""
+        BOOTSTRAP_OWNER_PASSWORD: bootstrap ? "test-owner-password-that-is-long" : "",
+        DISCORD_CLIENT_ID: "test-discord-client",
+        DISCORD_CLIENT_SECRET: "test-discord-secret",
+        DISCORD_REDIRECT_URI: "https://portal.example/api/discord/callback"
       },
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -133,13 +138,21 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   });
 
   const base = await startServer();
+  const testDb = new DatabaseSync(path.join(dataDir, "portal.sqlite"));
+  const linkTestDiscord = (username, discordId, guilds = []) => {
+    testDb.prepare(`
+      UPDATE users SET discord_id = ?, discord_username = ?, discord_linked_at = ?,
+        discord_guilds = ? WHERE username = ?
+    `).run(discordId, `discord-${username}`, new Date().toISOString(), JSON.stringify(guilds), username);
+  };
+  t.after(() => testDb.close());
   const homepage = await request(base, "/");
   assert.equal(homepage.status, 200);
   const homepageHtml = await homepage.text();
   assert.match(homepageHtml, /PRIVATE TEAM ACCESS/);
-  assert.match(homepageHtml, /app\.js\?v=7/);
+  assert.match(homepageHtml, /app\.js\?v=8/);
   assert.equal(homepage.headers.get("cache-control"), "no-store");
-  const appScript = await request(base, "/app.js?v=7");
+  const appScript = await request(base, "/app.js?v=8");
   assert.equal(appScript.status, 200);
   assert.equal(appScript.headers.get("cache-control"), "no-store");
   const appScriptText = await appScript.text();
@@ -157,9 +170,19 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   assert.equal(badLogin.response.status, 401);
   const ownerSession = await signIn(base, "portalowner", "test-owner-password-that-is-long");
   assert.equal(ownerSession.response.status, 200);
+  const unlinkedOwnerBoard = await request(base, "/api/board", { cookie: ownerSession.cookie });
+  assert.equal(unlinkedOwnerBoard.status, 428);
+  const authorizeDiscord = await request(base, "/api/discord/authorize", { cookie: ownerSession.cookie, redirect: "manual" });
+  assert.equal(authorizeDiscord.status, 303);
+  const discordAuthorizeUrl = new URL(authorizeDiscord.headers.get("location"));
+  assert.equal(discordAuthorizeUrl.origin, "https://discord.com");
+  assert.equal(discordAuthorizeUrl.searchParams.get("scope"), "identify guilds");
+  assert.equal(discordAuthorizeUrl.searchParams.get("code_challenge_method"), "S256");
+  linkTestDiscord("portalowner", "175928847299117063", [{ id: "123", name: "Team server", icon: null }]);
   const owner = await getSession(base, ownerSession.cookie);
   assert.equal(owner.user.roleId, "owner");
   assert.equal(owner.user.mustChangePassword, false);
+  assert.equal(owner.user.discordLinked, true);
 
   const noCsrf = await request(base, "/api/accounts", {
     method: "POST",
@@ -200,8 +223,12 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
     }
   });
   assert.equal(changeHrPassword.status, 200);
+  const unlinkedHrBoard = await request(base, "/api/board", { cookie: hrSession.cookie });
+  assert.equal(unlinkedHrBoard.status, 428);
+  linkTestDiscord("humanresources", "175928847299117064", [{ id: "123", name: "Team server", icon: null }]);
   hr = await getSession(base, hrSession.cookie);
   assert.equal(hr.user.mustChangePassword, false);
+  assert.equal(hr.user.discordLinked, true);
 
   const forbiddenRoleEdit = await request(base, "/api/roles", {
     method: "POST",
@@ -250,6 +277,7 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   });
   assert.equal(createDeveloper.status, 201);
   const developerAccount = await responseJson(createDeveloper);
+  linkTestDiscord("builderone", "175928847299117065", [{ id: "456", name: "Build server", icon: null }]);
   const developerSession = await signIn(base, "builderone", developerAccount.temporaryPassword);
   assert.equal(developerSession.response.status, 200);
   let developer = await getSession(base, developerSession.cookie);
@@ -416,6 +444,43 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   });
   const finalBoard = await responseJson(await request(base, "/api/board", { cookie: hrSession.cookie }));
   assert.equal(finalBoard.payroll.filter((record) => record.userId === developer.user.id).length, 1);
+
+  const staffMenuResponse = await request(base, `/api/accounts/${developer.user.id}/menu`, {
+    cookie: hrSession.cookie
+  });
+  assert.equal(staffMenuResponse.status, 200);
+  const staffMenu = await responseJson(staffMenuResponse);
+  assert.equal(staffMenu.discord.id, "175928847299117065");
+  assert.equal(staffMenu.discord.username, "discord-builderone");
+  assert.equal(staffMenu.discord.guilds[0].name, "Build server");
+  assert.equal(staffMenu.tasks[0].title, "Build the armory");
+  assert.equal(staffMenu.payroll[0].status, "paid");
+  assert.equal(staffMenu.documents.length, 0);
+  const renamedStaff = await request(base, `/api/accounts/${developer.user.id}`, {
+    method: "PATCH",
+    cookie: hrSession.cookie,
+    csrf: hr.csrfToken,
+    body: { displayName: "Builder One Updated" }
+  });
+  assert.equal(renamedStaff.status, 200);
+  const deniedStaffMenu = await request(base, `/api/accounts/${developer.user.id}/menu`, {
+    cookie: developerSession.cookie
+  });
+  assert.equal(deniedStaffMenu.status, 403);
+
+  const unlinkDiscord = await request(base, `/api/accounts/${developer.user.id}/unlink-discord`, {
+    method: "POST",
+    cookie: hrSession.cookie,
+    csrf: hr.csrfToken,
+    body: {}
+  });
+  assert.equal(unlinkDiscord.status, 200);
+  assert.equal((await request(base, "/api/me", { cookie: developerSession.cookie })).status, 401);
+  const developerRelogin = await signIn(base, "builderone", "developer-account-new-long-password");
+  assert.equal(developerRelogin.response.status, 200);
+  const unlinkedDeveloper = await getSession(base, developerRelogin.cookie);
+  assert.equal(unlinkedDeveloper.user.discordLinked, false);
+  assert.equal((await request(base, "/api/board", { cookie: developerRelogin.cookie })).status, 428);
 
   child.kill("SIGTERM");
   await once(child, "exit");

@@ -154,6 +154,27 @@ tr:last-child td { border-bottom: 0; }
 .checkRow input { width: 14px; height: 14px; accent-color: var(--gold); }
 .roleTag { padding: 4px 8px; border: 1px solid #454636; border-radius: 12px; color: #dbc875; font-size: 9px; }
 .notice { margin: 0 0 13px; padding: 10px 12px; border: 1px solid #655830; border-radius: 5px; background: rgba(215,184,91,.07); color: #dacb92; font-size: 10px; line-height: 1.5; }
+[data-staff-context]:hover { background: rgba(215,184,91,.035); }
+[data-staff-context]:focus-visible { outline: 1px solid var(--gold); outline-offset: -2px; }
+.discordConnect { max-width: 650px; }
+.discordConnect .eyebrowMuted { color: var(--gold); }
+.discordConnect h1 { margin: 0 0 12px; font-size: 22px; }
+.discordConnect > p { line-height: 1.7; }
+.discordConnect .discordConnectError { color: #f49b8f; }
+.staffActionGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 18px 0; }
+.staffActionGrid > button { justify-content: flex-start; min-height: 38px; text-align: left; }
+.staffProfileGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+.staffProfileGrid > div { min-width: 0; padding: 10px; border: 1px solid #303630; border-radius: 6px; background: #151815; }
+.staffProfileGrid small, .staffProfileGrid strong { display: block; overflow-wrap: anywhere; }
+.staffProfileGrid small { margin-bottom: 5px; color: var(--muted); font-size: 9px; }
+.staffProfileGrid strong { font-size: 11px; }
+.staffGuildList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; max-height: 230px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.staffGuildList li { padding: 8px; border: 1px solid #303630; border-radius: 5px; color: #c3cac1; font-size: 10px; overflow-wrap: anywhere; }
+.staffRecordList { display: grid; gap: 8px; max-height: 55vh; overflow-y: auto; }
+.staffRecordList article { padding: 11px; border: 1px solid #303630; border-radius: 6px; background: #151815; }
+.staffRecordList article > strong { margin-right: 8px; font-size: 11px; }
+.staffRecordList article > p { margin: 7px 0; color: #a7afa6; font-size: 10px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.staffRecordList article > small { display: block; margin-top: 6px; color: #818a81; font-size: 9px; }
 .documentList { display: grid; gap: 12px; }
 .documentCard { padding: 19px; border: 1px solid #2d332e; border-radius: 7px; background: #191c1a; }
 .documentHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding-bottom: 13px; border-bottom: 1px solid #2b302c; }
@@ -238,4 +259,5 @@ tr:last-child td { border-bottom: 0; }
   .brandLogin { top: 22px; left: 20px; }
   .loginVersion { bottom: 14px; font-size: 8px; }
   .rolePermissionList { grid-template-columns: 1fr; }
+  .staffActionGrid, .staffProfileGrid, .staffGuildList { grid-template-columns: 1fr; }
 }

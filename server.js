@@ -4,6 +4,14 @@ const { createServer } = require("node:http");
 const { readFile, mkdir, stat } = require("node:fs/promises");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
+const {
+  authorizationUrl,
+  createPkcePair,
+  exchangeCode,
+  fetchIdentityAndGuilds,
+  readConfig,
+  snowflakeCreatedAt
+} = require("./discord-oauth");
 
 const scrypt = promisify(scryptCallback);
 const PORT = Number(process.env.PORT || 3000);
@@ -156,11 +164,18 @@ function requirePermission(user, permission) {
   if (!hasPermission(user, permission)) fail(403, "You do not have permission to do that.");
 }
 
+function requireDiscordLinked(user, pathName) {
+  if (!user.discordId && pathName !== "/api/discord/authorize" && pathName !== "/api/password") {
+    fail(428, "Connect your Discord account before using the workspace.");
+  }
+}
+
 function currentUser(req) {
   const token = requestToken(req);
   if (!token) return null;
   const row = db.prepare(`
     SELECT s.csrf_token, s.expires_at, u.id, u.username, u.display_name, u.role_id,
+           u.discord_id,
            u.active, u.must_change_password, r.name AS role_name, r.permissions
     FROM sessions s
     JOIN users u ON u.id = s.user_id
@@ -176,6 +191,7 @@ function currentUser(req) {
     roleName: row.role_name,
     active: Boolean(row.active),
     mustChangePassword: Boolean(row.must_change_password),
+    discordId: row.discord_id,
     permissions: rolePermissions(row),
     csrfToken: row.csrf_token
   };
@@ -204,17 +220,76 @@ function accountById(id) {
 function listStaff(activeOnly = true) {
   const query = activeOnly ? `
     SELECT u.id, u.username, u.display_name AS displayName, u.role_id AS roleId,
-           r.name AS roleName, u.active
+           r.name AS roleName, u.active, u.discord_id IS NOT NULL AS discordLinked
     FROM users u JOIN roles r ON r.id = u.role_id
     WHERE u.active = 1
     ORDER BY r.name, u.display_name
   ` : `
     SELECT u.id, u.username, u.display_name AS displayName, u.role_id AS roleId,
-           r.name AS roleName, u.active
+           r.name AS roleName, u.active, u.discord_id IS NOT NULL AS discordLinked
     FROM users u JOIN roles r ON r.id = u.role_id
     ORDER BY r.name, u.display_name
   `;
-  return db.prepare(query).all().map((row) => ({ ...row, active: Boolean(row.active) }));
+  return db.prepare(query).all().map((row) => ({
+    ...row,
+    active: Boolean(row.active),
+    discordLinked: Boolean(row.discordLinked)
+  }));
+}
+
+function staffOverview(user, staffId) {
+  requirePermission(user, "manageAccounts");
+  const target = db.prepare(`
+    SELECT u.id, u.username, u.display_name AS displayName, u.role_id AS roleId,
+           r.name AS roleName, u.active, u.created_at AS createdAt,
+           u.discord_id AS discordId, u.discord_username AS discordUsername,
+           u.discord_avatar AS discordAvatar, u.discord_linked_at AS discordLinkedAt,
+           u.discord_guilds AS discordGuilds
+    FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?
+  `).get(staffId);
+  if (!target) fail(404, "That staff account could not be found.");
+  let guilds = [];
+  try {
+    guilds = JSON.parse(target.discordGuilds || "[]");
+  } catch {
+    guilds = [];
+  }
+  const tasks = db.prepare(`
+    SELECT id, title, description, status, due_date AS dueDate, created_at AS createdAt
+    FROM tasks WHERE assignee_id = ? ORDER BY created_at DESC LIMIT 100
+  `).all(staffId);
+  const payroll = hasPermission(user, "managePayroll") || hasPermission(user, "viewAllPayroll")
+    ? db.prepare(`
+      SELECT id, amount, note, status, created_at AS createdAt
+      FROM payroll WHERE user_id = ? ORDER BY created_at DESC LIMIT 100
+    `).all(staffId)
+    : [];
+  const documents = db.prepare(`
+    SELECT id, title, content, created_at AS createdAt, updated_at AS updatedAt
+    FROM documents WHERE created_by = ? ORDER BY updated_at DESC LIMIT 100
+  `).all(staffId);
+  return {
+    canViewPayroll: hasPermission(user, "managePayroll") || hasPermission(user, "viewAllPayroll"),
+    staff: {
+      id: target.id,
+      username: target.username,
+      displayName: target.displayName,
+      roleName: target.roleName,
+      active: Boolean(target.active),
+      createdAt: target.createdAt
+    },
+    discord: target.discordId ? {
+      id: target.discordId,
+      username: target.discordUsername,
+      avatar: target.discordAvatar,
+      linkedAt: target.discordLinkedAt,
+      accountCreatedAt: snowflakeCreatedAt(target.discordId),
+      guilds
+    } : null,
+    tasks,
+    payroll,
+    documents
+  };
 }
 
 function listTasks() {
@@ -311,6 +386,11 @@ function buildBootstrapDb() {
       role_id TEXT NOT NULL REFERENCES roles(id),
       active INTEGER NOT NULL DEFAULT 1,
       must_change_password INTEGER NOT NULL DEFAULT 1,
+      discord_id TEXT,
+      discord_username TEXT,
+      discord_avatar TEXT,
+      discord_linked_at TEXT,
+      discord_guilds TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS sessions (
@@ -320,6 +400,13 @@ function buildBootstrapDb() {
       expires_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
+    CREATE TABLE IF NOT EXISTS discord_oauth_states (
+      state_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      session_hash TEXT NOT NULL REFERENCES sessions(token_hash) ON DELETE CASCADE,
+      code_verifier TEXT NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -386,6 +473,13 @@ function buildBootstrapDb() {
       attempt_count INTEGER NOT NULL DEFAULT 0
     );
   `);
+  const userColumns = new Set(db.prepare("PRAGMA table_info(users)").all().map((column) => column.name));
+  if (!userColumns.has("discord_id")) db.exec("ALTER TABLE users ADD COLUMN discord_id TEXT");
+  if (!userColumns.has("discord_username")) db.exec("ALTER TABLE users ADD COLUMN discord_username TEXT");
+  if (!userColumns.has("discord_avatar")) db.exec("ALTER TABLE users ADD COLUMN discord_avatar TEXT");
+  if (!userColumns.has("discord_linked_at")) db.exec("ALTER TABLE users ADD COLUMN discord_linked_at TEXT");
+  if (!userColumns.has("discord_guilds")) db.exec("ALTER TABLE users ADD COLUMN discord_guilds TEXT NOT NULL DEFAULT '[]'");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique_idx ON users(discord_id) WHERE discord_id IS NOT NULL");
   const todoColumns = new Set(db.prepare("PRAGMA table_info(todo_items)").all().map((column) => column.name));
   if (!todoColumns.has("section")) {
     db.exec("ALTER TABLE todo_items ADD COLUMN section TEXT NOT NULL DEFAULT 'General'");
@@ -576,6 +670,21 @@ function requirePasswordChangeDone(user, pathName) {
   }
 }
 
+function redirectResponse(res, location) {
+  res.writeHead(303, {
+    Location: location,
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer"
+  });
+  res.end();
+}
+
+function discordResultUrl(config, result) {
+  const destination = new URL("/", config.redirectUri);
+  destination.searchParams.set("discord", result);
+  return destination.toString();
+}
+
 async function handleApi(req, res, url) {
   const route = `${req.method} ${url.pathname}`;
   if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
@@ -615,11 +724,58 @@ async function handleApi(req, res, url) {
         roleId: user.roleId,
         roleName: user.roleName,
         permissions: user.permissions,
-        mustChangePassword: user.mustChangePassword
+        mustChangePassword: user.mustChangePassword,
+        discordLinked: Boolean(user.discordId)
       },
       csrfToken: user.csrfToken
     });
     return;
+  }
+
+  if (route === "GET /api/discord/callback") {
+    const config = readConfig();
+    const callbackUrl = (result) => discordResultUrl(config, result);
+    const state = url.searchParams.get("state") || "";
+    const code = url.searchParams.get("code") || "";
+    if (!state) return redirectResponse(res, callbackUrl("invalid"));
+    const stateHash = hashToken(state);
+    const oauthState = db.prepare(`
+      SELECT o.user_id AS userId, o.code_verifier AS codeVerifier, o.expires_at AS expiresAt
+      FROM discord_oauth_states o
+      JOIN sessions s ON s.token_hash = o.session_hash
+      JOIN users u ON u.id = o.user_id
+      WHERE o.state_hash = ? AND s.user_id = o.user_id
+        AND s.expires_at > ? AND u.active = 1
+    `).get(stateHash, Date.now());
+    db.prepare("DELETE FROM discord_oauth_states WHERE state_hash = ?").run(stateHash);
+    if (!oauthState || oauthState.expiresAt < Date.now()) {
+      return redirectResponse(res, callbackUrl("expired"));
+    }
+    if (url.searchParams.has("error") || !code) return redirectResponse(res, callbackUrl("cancelled"));
+    try {
+      const accessToken = await exchangeCode(config, code, oauthState.codeVerifier);
+      const discord = await fetchIdentityAndGuilds(accessToken);
+      const update = db.prepare(`
+        UPDATE users SET discord_id = ?, discord_username = ?, discord_avatar = ?,
+          discord_linked_at = ?, discord_guilds = ?
+        WHERE id = ? AND active = 1 AND must_change_password = 0
+      `).run(
+        discord.id,
+        discord.username,
+        discord.avatar,
+        new Date().toISOString(),
+        JSON.stringify(discord.guilds),
+        oauthState.userId
+      );
+      if (!update.changes) return redirectResponse(res, callbackUrl("expired"));
+      return redirectResponse(res, callbackUrl("linked"));
+    } catch (error) {
+      if (String(error.code || "").startsWith("ERR_SQLITE_CONSTRAINT")) {
+        return redirectResponse(res, callbackUrl("already-linked"));
+      }
+      console.error("Discord OAuth callback failed:", error);
+      return redirectResponse(res, callbackUrl("failed"));
+    }
   }
 
   if (route === "POST /api/logout") {
@@ -634,6 +790,25 @@ async function handleApi(req, res, url) {
   const user = currentUser(req);
   requireUser(user);
   requirePasswordChangeDone(user, url.pathname);
+  requireDiscordLinked(user, url.pathname);
+
+  if (route === "GET /api/discord/authorize") {
+    const config = readConfig();
+    const sessionToken = requestToken(req);
+    const state = randomBytes(32).toString("base64url");
+    const { verifier, challenge } = createPkcePair();
+    db.prepare("DELETE FROM discord_oauth_states WHERE expires_at <= ?").run(Date.now());
+    db.prepare(`
+      INSERT INTO discord_oauth_states (state_hash, user_id, session_hash, code_verifier, expires_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(hashToken(state), user.id, hashToken(sessionToken), verifier, Date.now() + 10 * 60 * 1000);
+    return redirectResponse(res, authorizationUrl({
+      clientId: config.clientId,
+      redirectUri: config.redirectUri,
+      state,
+      challenge
+    }));
+  }
 
   if (route === "POST /api/password") {
     checkCsrf(req, user);
@@ -825,6 +1000,29 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  const accountMenuRoute = url.pathname.match(/^\/api\/accounts\/([0-9a-f-]{36})\/menu$/i);
+  if (accountMenuRoute && req.method === "GET") {
+    json(res, 200, staffOverview(user, accountMenuRoute[1]));
+    return;
+  }
+
+  const unlinkDiscordRoute = url.pathname.match(/^\/api\/accounts\/([0-9a-f-]{36})\/unlink-discord$/i);
+  if (unlinkDiscordRoute && req.method === "POST") {
+    checkCsrf(req, user);
+    requirePermission(user, "manageAccounts");
+    const target = accountById(unlinkDiscordRoute[1]);
+    if (!target || target.role_id === "owner" || target.id === user.id) {
+      fail(404, "That staff account cannot be unlinked.");
+    }
+    db.prepare(`
+      UPDATE users SET discord_id = NULL, discord_username = NULL, discord_avatar = NULL,
+        discord_linked_at = NULL, discord_guilds = '[]' WHERE id = ?
+    `).run(target.id);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
+    json(res, 200, { ok: true });
+    return;
+  }
+
   const accountRoute = url.pathname.match(/^\/api\/accounts\/([0-9a-f-]{36})(?:\/(reset-password))?$/i);
   if (accountRoute && req.method === "POST" && accountRoute[2] === "reset-password") {
     checkCsrf(req, user);
@@ -846,16 +1044,19 @@ async function handleApi(req, res, url) {
     const target = accountById(accountRoute[1]);
     if (!target || target.role_id === "owner" || target.id === user.id) fail(404, "That staff account could not be changed.");
     const body = await readJson(req);
-    if (body.active === undefined && body.roleId === undefined) fail(400, "Choose an account status or role.");
+    if (body.active === undefined && body.roleId === undefined && body.displayName === undefined) fail(400, "Choose an account detail to update.");
     const active = body.active === undefined ? Boolean(target.active) : body.active;
     if (typeof active !== "boolean") fail(400, "Choose whether the account should be active.");
+    const displayName = body.displayName === undefined ? target.display_name : normalizeText(body.displayName, 50);
+    if (body.displayName !== undefined && !displayName) fail(400, "Enter a display name.");
     let roleId = target.role_id;
     if (body.roleId !== undefined) {
       const role = db.prepare("SELECT id FROM roles WHERE id = ?").get(body.roleId);
       if (!role || role.id === "owner") fail(400, "Choose a staff role other than Owner.");
       roleId = role.id;
     }
-    db.prepare("UPDATE users SET active = ?, role_id = ? WHERE id = ?").run(Number(active), roleId, target.id);
+    db.prepare("UPDATE users SET active = ?, role_id = ?, display_name = ? WHERE id = ?")
+      .run(Number(active), roleId, displayName, target.id);
     if (!active) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
     json(res, 200, { ok: true });
     return;

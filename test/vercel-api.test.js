@@ -88,7 +88,11 @@ test("nested Vercel API entry points dispatch to the shared portal handler", () 
     "../api/tasks/[id].js",
     "../api/documents/[id].js",
     "../api/accounts/[id].js",
+    "../api/accounts/[id]/menu.js",
+    "../api/accounts/[id]/unlink-discord.js",
     "../api/accounts/[id]/reset-password.js",
+    "../api/discord/authorize.js",
+    "../api/discord/callback.js",
     "../api/roles/[id].js",
     "../api/payroll/[id].js",
     "../api/automations/[id].js"

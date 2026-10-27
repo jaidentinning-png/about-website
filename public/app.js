@@ -4,6 +4,8 @@ const state = {
   board: null,
   tab: "board",
   forcePasswordChange: false,
+  needsDiscordLink: false,
+  discordMessage: "",
   toastTimer: null
 };
 
@@ -121,6 +123,7 @@ function setLoggedOut() {
   state.user = null;
   state.board = null;
   state.csrfToken = "";
+  state.needsDiscordLink = false;
   $("#portalScreen").hidden = true;
   $("#loginScreen").hidden = false;
   $("#loginForm").reset();
@@ -133,7 +136,9 @@ async function loadCurrentUser() {
   state.user = result.user;
   state.csrfToken = result.csrfToken;
   state.forcePasswordChange = result.user.mustChangePassword;
-  if (!state.forcePasswordChange) await loadBoard();
+  state.needsDiscordLink = !result.user.discordLinked;
+  state.board = null;
+  if (!state.forcePasswordChange && !state.needsDiscordLink) await loadBoard();
   showPortal();
 }
 
@@ -150,8 +155,13 @@ function showPortal() {
   $$("[data-permission]").forEach((item) => {
     item.hidden = !can(item.dataset.permission);
   });
+  $("#mainNav").hidden = state.forcePasswordChange || state.needsDiscordLink;
   if (state.forcePasswordChange) {
     openPasswordDialog(true);
+    return;
+  }
+  if (state.needsDiscordLink) {
+    renderDiscordConnect();
     return;
   }
   renderTab();
@@ -187,7 +197,7 @@ function openPasswordDialog(required = false) {
 }
 
 function renderTab() {
-  if (state.forcePasswordChange || !state.user) return;
+  if (state.forcePasswordChange || state.needsDiscordLink || !state.user) return;
   const tab = TABS[state.tab] ? state.tab : "board";
   const nav = $(`[data-tab="${tab}"]`);
   if (nav?.hidden) state.tab = "board";
@@ -208,6 +218,19 @@ function renderTab() {
     roles: renderRoles
   };
   $("#content").innerHTML = renderers[state.tab]();
+}
+
+function renderDiscordConnect() {
+  $("#currentSection").textContent = "Connect Discord";
+  $("#content").innerHTML = `
+    <section class="accessNotice discordConnect">
+      <p class="eyebrowMuted">ONE-TIME ACCOUNT SETUP</p>
+      <h1>Connect your Discord</h1>
+      <p>Link the Discord account you use for the team to unlock your workspace. We request your Discord user ID, username, and server membership list so HR/Owner can verify your account.</p>
+      <p class="muted">We do not request access to messages. Server membership is saved as a snapshot when you connect; we do not keep your Discord access token.</p>
+      ${state.discordMessage ? `<p class="discordConnectError" role="alert">${escapeHtml(state.discordMessage)}</p>` : ""}
+      <button class="button buttonPrimary" type="button" data-action="link-discord">Continue with Discord</button>
+    </section>`;
 }
 
 function renderBoard() {
@@ -313,13 +336,15 @@ function renderStaff() {
       <div class="headingActions"><button class="button buttonPrimary" data-action="new-account">＋ Create account</button></div>
     </div>
     <div class="notice">Temporary passwords are shown only once. Share them directly with the intended team member; never post them publicly.</div>
-    <div class="tableWrap"><table><thead><tr><th>Team member</th><th>Role</th><th>Account</th><th>Actions</th></tr></thead><tbody>
-      ${state.board.staff.map((person) => `<tr>
+    <div class="notice">Right-click a staff row or use its Actions button for account tools and the Discord User Menu.</div>
+    <div class="tableWrap"><table><thead><tr><th>Team member</th><th>Role</th><th>Account</th><th>Discord</th><th>Actions</th></tr></thead><tbody>
+      ${state.board.staff.map((person) => `<tr data-staff-context="${escapeHtml(person.id)}" tabindex="0">
         <td><span class="personCell"><strong>${escapeHtml(person.displayName)}</strong><small>@${escapeHtml(person.username || "staff")}</small></span></td>
-        <td><select aria-label="Staff role" data-account-role="${person.id}" ${person.active ? "" : "disabled"}>${state.board.roles.filter((role) => role.id !== "owner").map((role) => `<option value="${escapeHtml(role.id)}" ${person.roleId === role.id ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></td>
+        <td><select aria-label="Staff role" data-account-role="${escapeHtml(person.id)}" ${person.active ? "" : "disabled"}>${state.board.roles.filter((role) => role.id !== "owner").map((role) => `<option value="${escapeHtml(role.id)}" ${person.roleId === role.id ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></td>
         <td><span class="statusPill ${person.active ? "approved" : "rejected"}">${person.active ? "Active" : "Disabled"}</span></td>
-        <td><div class="tableActions"><button class="button buttonSmall" data-action="reset-account" data-id="${person.id}">Reset password</button><button class="button buttonSmall ${person.active ? "buttonDanger" : ""}" data-action="toggle-account" data-id="${person.id}" data-active="${person.active}">${person.active ? "Disable" : "Enable"}</button></div></td>
-      </tr>`).join("") || `<tr><td colspan="4" class="emptyState">No staff accounts yet.</td></tr>`}
+        <td><span class="statusPill ${person.discordLinked ? "approved" : "rejected"}">${person.discordLinked ? "Linked" : "Not linked"}</span></td>
+        <td><button class="button buttonSmall" data-action="staff-actions" data-id="${escapeHtml(person.id)}" aria-label="Actions for ${escapeHtml(person.displayName)}">Actions ⋯</button></td>
+      </tr>`).join("") || `<tr><td colspan="5" class="emptyState">No staff accounts yet.</td></tr>`}
     </tbody></table></div>`;
 }
 
@@ -443,7 +468,7 @@ function renderNoAccess() {
   return `<section class="accessNotice"><h2>Restricted area</h2><p>Your account does not have permission to access this section. Contact the Owner or HR administrator if you need access.</p></section>`;
 }
 
-function openTaskForm(task = null) {
+function openTaskForm(task = null, targetAssigneeId = "") {
   const canAssign = can("manageTasks");
   const assignableStaff = state.board.staff.filter((person) => person.active !== false);
   setDialog(`
@@ -451,13 +476,114 @@ function openTaskForm(task = null) {
     <form id="taskForm" class="dialogForm" ${task ? `data-id="${task.id}"` : ""}>
       <label>Task title<input name="title" maxlength="120" value="${escapeHtml(task?.title || "")}" required autofocus></label>
       <label>Description<textarea name="description" maxlength="2000" placeholder="Add context, links, or acceptance criteria">${escapeHtml(task?.description || "")}</textarea></label>
-      ${canAssign ? `<label>Assign to<select name="assigneeId">${assignableStaff.map((person) => `<option value="${escapeHtml(person.id)}" ${task?.assigneeId === person.id ? "selected" : ""}>${escapeHtml(person.displayName)}</option>`).join("")}<option value="" ${task?.assigneeId ? "" : "selected"}>Unassigned</option></select></label>` : ""}
+      ${canAssign ? `<label>Assign to<select name="assigneeId">${assignableStaff.map((person) => `<option value="${escapeHtml(person.id)}" ${task?.assigneeId === person.id || (!task && targetAssigneeId === person.id) ? "selected" : ""}>${escapeHtml(person.displayName)}</option>`).join("")}<option value="" ${task?.assigneeId || targetAssigneeId ? "" : "selected"}>Unassigned</option></select></label>` : ""}
       <label>Due date<input name="dueDate" type="date" value="${escapeHtml(task?.dueDate || "")}"></label>
       ${task ? `<label>Status<select name="status">${STATUSES.map((status) => `<option value="${status.id}" ${task.status === status.id ? "selected" : ""}>${status.label}</option>`).join("")}</select></label>` : ""}
       <p class="formError" data-form-error hidden></p>
       <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">${task ? "Save changes" : "Create task"}</button></div>
     </form>`);
   $("#taskForm input[name=title]").focus();
+}
+
+function staffForId(id) {
+  return state.board?.staff.find((person) => person.id === id);
+}
+
+function openStaffActions(person) {
+  if (!person || !can("manageAccounts")) return;
+  const canEditAccount = person.roleId !== "owner" && person.id !== state.user.id;
+  setDialog(`
+    <p class="eyebrow">STAFF ACTIONS</p><h2>${escapeHtml(person.displayName)}</h2>
+    <p>@${escapeHtml(person.username || "staff")} · ${escapeHtml(person.roleName)}</p>
+    <div class="staffActionGrid">
+      <button class="button" data-action="staff-user-menu" data-id="${escapeHtml(person.id)}">User Menu</button>
+      <button class="button" data-action="staff-view-tasks" data-id="${escapeHtml(person.id)}">View tasks</button>
+      ${can("manageTasks") ? `<button class="button" data-action="staff-create-task" data-id="${escapeHtml(person.id)}">Assign task</button>` : ""}
+      ${can("managePayroll") || can("viewAllPayroll") ? `<button class="button" data-action="staff-view-payroll" data-id="${escapeHtml(person.id)}">View payroll</button>` : ""}
+      ${can("managePayroll") ? `<button class="button" data-action="staff-add-payroll" data-id="${escapeHtml(person.id)}">Add payroll</button>` : ""}
+      <button class="button" data-action="staff-view-documents" data-id="${escapeHtml(person.id)}">View authored documents</button>
+      ${canEditAccount ? `<button class="button" data-action="staff-edit-name" data-id="${escapeHtml(person.id)}">Edit display name</button>` : ""}
+      ${canEditAccount ? `<button class="button" data-action="staff-change-role" data-id="${escapeHtml(person.id)}">Change role</button>` : ""}
+      ${canEditAccount ? `<button class="button" data-action="reset-account" data-id="${escapeHtml(person.id)}">Reset password</button>` : ""}
+      ${canEditAccount ? `<button class="button ${person.active ? "buttonDanger" : ""}" data-action="toggle-account" data-id="${escapeHtml(person.id)}" data-active="${person.active}">${person.active ? "Disable account" : "Enable account"}</button>` : ""}
+      ${canEditAccount && person.discordLinked ? `<button class="button buttonDanger" data-action="staff-unlink-discord" data-id="${escapeHtml(person.id)}">Unlink Discord</button>` : ""}
+      ${person.discordLinked ? `<button class="button" data-action="staff-copy-discord-id" data-id="${escapeHtml(person.id)}">Copy Discord ID</button>` : ""}
+    </div>
+    <div class="dialogActions"><button class="button buttonQuiet" data-action="close-dialog">Close</button></div>`);
+}
+
+async function showStaffDetails(id, section) {
+  const person = staffForId(id);
+  if (!person) return;
+  const data = await api(`/api/accounts/${encodeURIComponent(id)}/menu`);
+  const heading = section === "profile" ? "User Menu"
+    : section === "tasks" ? "Assigned tasks"
+      : section === "payroll" ? "Payroll history" : "Authored documents";
+  let content = "";
+  if (section === "profile") {
+    const discord = data.discord;
+    content = discord ? `
+      <div class="staffProfileGrid">
+        <div><small>Discord user ID</small><strong id="staffDiscordId">${escapeHtml(discord.id)}</strong></div>
+        <div><small>Discord username</small><strong>${escapeHtml(discord.username)}</strong></div>
+        <div><small>Discord account created</small><strong>${escapeHtml(discord.accountCreatedAt ? new Date(discord.accountCreatedAt).toLocaleString() : "Unavailable")}</strong></div>
+        <div><small>Portal username</small><strong>@${escapeHtml(data.staff.username)}</strong></div>
+        <div><small>Portal account created</small><strong>${escapeHtml(new Date(data.staff.createdAt).toLocaleString())}</strong></div>
+        <div><small>Discord linked</small><strong>${escapeHtml(new Date(discord.linkedAt).toLocaleString())}</strong></div>
+      </div>
+      <h3>Discord servers (${discord.guilds.length})</h3>
+      <p class="muted">Membership snapshot from when this account last connected Discord.</p>
+      ${discord.guilds.length ? `<ul class="staffGuildList">${discord.guilds.map((guild) => `<li>${escapeHtml(guild.name)}</li>`).join("")}</ul>` : `<p class="emptyState">No Discord servers were returned for this account.</p>`}
+      <div class="dialogActions"><button class="button" data-action="staff-copy-discord-id" data-id="${escapeHtml(id)}">Copy Discord ID</button><button class="button buttonQuiet" data-action="close-dialog">Close</button></div>`
+      : `<p>This staff member has not linked Discord yet.</p><div class="dialogActions"><button class="button buttonQuiet" data-action="close-dialog">Close</button></div>`;
+  } else if (section === "tasks") {
+    content = data.tasks.length
+      ? `<div class="staffRecordList">${data.tasks.map((task) => `<article><strong>${escapeHtml(task.title)}</strong><span class="statusPill ${escapeHtml(task.status)}">${escapeHtml(task.status.replace("_", " "))}</span>${task.description ? `<p>${escapeHtml(task.description)}</p>` : ""}<small>${task.dueDate ? `Due ${escapeHtml(formatDate(task.dueDate))}` : "No due date"}</small></article>`).join("")}</div>`
+      : `<p class="emptyState">No tasks assigned to this person.</p>`;
+  } else if (section === "payroll") {
+    content = data.canViewPayroll
+      ? data.payroll.length
+        ? `<div class="staffRecordList">${data.payroll.map((entry) => `<article><strong>${money(entry.amount)} · ${escapeHtml(entry.status)}</strong><p>${escapeHtml(entry.note || "No note")}</p><small>${escapeHtml(new Date(entry.createdAt).toLocaleDateString())}</small></article>`).join("")}</div>`
+        : `<p class="emptyState">No payroll entries for this person.</p>`
+      : `<p class="emptyState">Your role cannot view payroll details.</p>`;
+  } else {
+    content = data.documents.length
+      ? `<div class="staffRecordList">${data.documents.map((document) => `<article><strong>${escapeHtml(document.title)}</strong><p>${escapeHtml(document.content)}</p><small>${escapeHtml(new Date(document.updatedAt).toLocaleDateString())}</small></article>`).join("")}</div>`
+      : `<p class="emptyState">This person has not authored any documents.</p>`;
+  }
+  setDialog(`<p class="eyebrow">STAFF PROFILE</p><h2>${escapeHtml(heading)} · ${escapeHtml(person.displayName)}</h2>${content}`);
+}
+
+function openStaffEditName(person) {
+  setDialog(`
+    <p class="eyebrow">STAFF ACCOUNT</p><h2>Edit display name</h2>
+    <form id="staffNameForm" class="dialogForm" data-id="${escapeHtml(person.id)}">
+      <label>Display name<input name="displayName" maxlength="50" value="${escapeHtml(person.displayName)}" required></label>
+      <p class="formError" data-form-error hidden></p>
+      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">Save name</button></div>
+    </form>`);
+}
+
+function openStaffRoleForm(person) {
+  const roles = state.board.roles.filter((role) => role.id !== "owner");
+  setDialog(`
+    <p class="eyebrow">STAFF ACCOUNT</p><h2>Change role</h2>
+    <form id="staffRoleForm" class="dialogForm" data-id="${escapeHtml(person.id)}">
+      <label>Role<select name="roleId">${roles.map((role) => `<option value="${escapeHtml(role.id)}" ${person.roleId === role.id ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></label>
+      <p class="formError" data-form-error hidden></p>
+      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">Save role</button></div>
+    </form>`);
+}
+
+function openStaffPayrollForm(person) {
+  setDialog(`
+    <p class="eyebrow">ROBLOX PAYROLL</p><h2>Add entry for ${escapeHtml(person.displayName)}</h2>
+    <form id="staffPayrollForm" class="dialogForm" data-id="${escapeHtml(person.id)}">
+      <label>Robux amount<input name="amount" type="number" min="1" max="10000000" step="1" required></label>
+      <label>Note<input name="note" maxlength="500" placeholder="Reason or payout period"></label>
+      <p class="formError" data-form-error hidden></p>
+      <div class="dialogActions"><button type="button" class="button buttonQuiet" data-action="close-dialog">Cancel</button><button class="button buttonPrimary" type="submit">Add pending entry</button></div>
+    </form>`);
 }
 
 function openAccountForm() {
@@ -590,6 +716,37 @@ async function handleSubmit(event) {
   }
 
   try {
+    if (form.id === "staffNameForm") {
+      await api(`/api/accounts/${form.dataset.id}`, {
+        method: "PATCH",
+        body: formValues(form)
+      });
+      $("#dialog").close();
+      await refresh();
+      showToast("Display name updated.");
+      return;
+    }
+    if (form.id === "staffRoleForm") {
+      await api(`/api/accounts/${form.dataset.id}`, {
+        method: "PATCH",
+        body: formValues(form)
+      });
+      $("#dialog").close();
+      await refresh();
+      showToast("Staff role updated.");
+      return;
+    }
+    if (form.id === "staffPayrollForm") {
+      const values = formValues(form);
+      await api("/api/payroll", {
+        method: "POST",
+        body: { ...values, userId: form.dataset.id, amount: Number(values.amount) }
+      });
+      $("#dialog").close();
+      await refresh();
+      showToast("Robux payroll entry added as pending.");
+      return;
+    }
     if (form.id === "passwordForm") {
       const values = formValues(form);
       if (values.newPassword !== values.confirmPassword) throw new Error("The new password entries do not match.");
@@ -709,6 +866,53 @@ async function handleClick(event) {
   if (!button) return;
   const { action, id } = button.dataset;
   try {
+    if (action === "link-discord") {
+      window.location.assign("/api/discord/authorize");
+      return;
+    }
+    if (action === "staff-actions") {
+      openStaffActions(staffForId(id));
+      return;
+    }
+    if (action === "staff-user-menu") return await showStaffDetails(id, "profile");
+    if (action === "staff-view-tasks") return await showStaffDetails(id, "tasks");
+    if (action === "staff-view-payroll") return await showStaffDetails(id, "payroll");
+    if (action === "staff-view-documents") return await showStaffDetails(id, "documents");
+    if (action === "staff-create-task") {
+      const person = staffForId(id);
+      if (person) openTaskForm(null, person.id);
+      return;
+    }
+    if (action === "staff-add-payroll") {
+      const person = staffForId(id);
+      if (person) openStaffPayrollForm(person);
+      return;
+    }
+    if (action === "staff-edit-name") {
+      const person = staffForId(id);
+      if (person) openStaffEditName(person);
+      return;
+    }
+    if (action === "staff-change-role") {
+      const person = staffForId(id);
+      if (person) openStaffRoleForm(person);
+      return;
+    }
+    if (action === "staff-copy-discord-id") {
+      const details = await api(`/api/accounts/${encodeURIComponent(id)}/menu`);
+      if (!details.discord?.id) throw new Error("This staff member has not linked Discord.");
+      await navigator.clipboard.writeText(details.discord.id);
+      showToast("Discord user ID copied.");
+      return;
+    }
+    if (action === "staff-unlink-discord") {
+      if (!confirm("Unlink this person's Discord account? They will be signed out and must connect Discord again before using the workspace.")) return;
+      await api(`/api/accounts/${encodeURIComponent(id)}/unlink-discord`, { method: "POST", body: {} });
+      $("#dialog").close();
+      await refresh();
+      showToast("Discord account unlinked.");
+      return;
+    }
     if (action === "new-task") return openTaskForm();
     if (action === "change-password") return openPasswordDialog(false);
     if (action === "edit-task") {
@@ -854,6 +1058,12 @@ document.addEventListener("change", (event) => {
       .catch(async (error) => { showToast(error.message, true); await refresh(); });
   }
 });
+document.addEventListener("contextmenu", (event) => {
+  const row = event.target.closest("[data-staff-context]");
+  if (!row || event.target.closest("button, select, input, a")) return;
+  event.preventDefault();
+  openStaffActions(staffForId(row.dataset.staffContext));
+});
 document.addEventListener("cancel", (event) => {
   if (event.target.id === "dialog" && state.forcePasswordChange) event.preventDefault();
 }, true);
@@ -885,8 +1095,19 @@ document.addEventListener("pointerup", () => {
   void updateTask(taskId, { canvasX: x, canvasY: y });
 });
 (async function initialize() {
+  const discordResult = new URLSearchParams(window.location.search).get("discord");
+  const discordMessages = {
+    cancelled: "Discord linking was cancelled. Connect Discord to continue.",
+    "already-linked": "That Discord account is already linked to another portal account. Ask the Owner for help.",
+    expired: "The Discord link expired or your portal session ended. Please try again.",
+    failed: "Discord could not be connected. Please try again or contact the Owner.",
+    invalid: "The Discord callback was invalid. Please try linking again."
+  };
+  state.discordMessage = discordMessages[discordResult] || "";
+  if (discordResult) window.history.replaceState(null, "", window.location.pathname);
   try {
     await loadCurrentUser();
+    if (discordResult === "linked") showToast("Discord connected.");
   } catch (error) {
     setLoggedOut();
     if (error.message !== "Please log in to continue." && !error.message.includes("log in")) {
