@@ -42,6 +42,16 @@ If sign-in returns an API configuration error, check the Vercel Function logs an
 
 Vercel + Neon uses a separate database from any local `data/portal.sqlite` file. Local SQLite records are not automatically copied to Neon.
 
+### Recover a forgotten Vercel Owner password
+
+The bootstrap password is only used when creating the first Owner; changing that environment variable does not reset an existing account. To reset the Owner password without deleting portal data:
+
+1. In a terminal at the repository root, run `node scripts/reset-owner-password.js`. Enter and confirm a new password when prompted; input is hidden.
+2. Copy the generated SQL into the connected Neon project's SQL Editor and run it.
+3. Sign in using the existing Owner username and the new password.
+
+The SQL updates Owner password hashes and invalidates their sessions. It does not delete tasks, staff, payroll, documents, or to-do items. Treat the generated SQL as sensitive until it has been run.
+
 ## Roles and workflow
 
 - **Owner** is the site superadmin and can manage all roles, accounts, tasks, payroll, and automations.
