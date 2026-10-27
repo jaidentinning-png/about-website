@@ -25,10 +25,8 @@ button { color: inherit; }
 [hidden] { display: none !important; }
 
 .loginScreen { min-height: 100vh; display: grid; place-items: center; padding: 100px 24px 70px; position: relative; overflow: hidden; background: #09090b; }
-.loginBackdrop { position: absolute; inset: 0; pointer-events: none; background: #100e10 url("/cartel-empire-logo.png") center 44% / min(100vw, 840px) auto no-repeat; }
-.loginBackdrop::after { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(9,9,11,.38), rgba(9,9,11,.72) 42%, #09090b 83%); content: ""; }
-.loginBackdrop::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .1; background-image: linear-gradient(115deg, transparent 10%, rgba(255,255,255,.07) 10.1%, transparent 10.3%), linear-gradient(24deg, transparent 64%, rgba(255,255,255,.06) 64.1%, transparent 64.3%); background-size: 290px 240px, 360px 270px; }
-.brand { display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none; position: relative; z-index: 1; }
+.loginBackdrop { position: absolute; inset: 0; z-index: 0; pointer-events: none; background-color: #100e10; background-image: linear-gradient(180deg, rgba(9,9,11,.38), rgba(9,9,11,.72) 42%, #09090b 83%), url("/cartel-empire-logo.png"); background-position: center, center 44%; background-size: cover, min(100vw, 840px) auto; background-repeat: no-repeat; }
+.brand { display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none; position: relative; z-index: 2; }
 .brandMark { display: block; width: 46px; height: 46px; flex: 0 0 auto; border: 1px solid #755e30; border-radius: 8px; object-fit: cover; transition: border-color .2s, transform .2s; }
 .brand:hover .brandMark { transform: translateY(-1px); border-color: var(--gold-bright); }
 .brand strong, .brand small { display: block; }
