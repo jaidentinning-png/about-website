@@ -25,7 +25,7 @@ The local server creates `data/portal.sqlite`. Keep `data/` private and backed u
 
 ## Deploy the shared site with Vercel + Neon
 
-The Vercel API uses Neon Postgres and initializes the required tables and initial Owner account on first request. Explicit Vercel function routes cover nested API paths such as task edits and bulk to-do imports. No separate API host is required.
+The Vercel API uses Neon Postgres and initializes the required tables and initial Owner account on first request. A single serverless function handles all API paths through Vercel rewrites, keeping the project within the Hobby plan's 12-function limit while supporting nested routes such as task edits and bulk to-do imports. No separate API host is required.
 
 1. In the [Discord Developer Portal](https://discord.com/developers/applications), create an application. Under **OAuth2 → General**, copy its Client ID and create/copy a Client Secret. Under **OAuth2 → Redirects**, add the exact callback URL `https://jaitinn.site/api/discord/callback` (use your production domain). A bot or server installation is not needed.
 2. Import this repository into Vercel and deploy it using the default Node.js project settings.
@@ -42,7 +42,7 @@ The Vercel API uses Neon Postgres and initializes the required tables and initia
 7. Open the production site and sign in using the bootstrap Owner credentials. After verifying the account works, remove `BOOTSTRAP_OWNER_PASSWORD` from Vercel. The Owner account remains in Neon; the bootstrap credential is only used when the database has no users.
 8. Connect Discord when the portal prompts. Existing and newly created accounts without a Discord link must connect before using the workspace.
 
-The OAuth prompt requests only `identify` and `guilds`; it does not request message access. The portal stores the Discord ID, username, avatar hash, link time, and server names/IDs returned when the user links. The authorized access token is not stored. Server membership is a snapshot from link time and is refreshed by linking again. HR/Owner can open **Staff & accounts**, click a person's **Actions** button or right-click their row, then use **User Menu** to see their Discord ID, username, Discord account creation date, portal account creation date, and linked server list. Other menu actions include assigned tasks, payroll, authored documents, account controls, and Discord unlinking.
+The OAuth prompt requests only `identify` and `guilds`; it does not request message access. The portal stores the Discord ID, username, avatar hash, link time, and server names/IDs returned when the user links. The authorized access token is not stored. Server membership is a snapshot from link time and is refreshed by linking again. HR/Owner can open **Staff & accounts**, click a person's three-dot action button or right-click their row, then use **User Menu** to see their Discord ID, username, Discord account creation date, portal account creation date, and linked server list. Other menu actions include assigned tasks, payroll, authored documents, account controls, and Discord unlinking.
 
 If sign-in returns an API configuration error, check the Vercel Function logs and confirm that `DATABASE_URL` (or `POSTGRES_URL`) is available to the deployment. The API does not proxy to another host. The portal's database is not stored on Vercel's temporary filesystem.
 

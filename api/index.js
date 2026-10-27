@@ -541,7 +541,11 @@ async function recordLoginFailure(key) {
 }
 
 async function handle(request, response) {
-  const path = new URL(request.url, "https://vercel.invalid").pathname;
+  const requestUrl = new URL(request.url, "https://vercel.invalid");
+  const rewrittenPath = requestUrl.searchParams.get("__api_path");
+  const path = rewrittenPath
+    ? `/api/${rewrittenPath.replace(/^\/?api\/?/, "").replace(/^\/+/, "")}`
+    : requestUrl.pathname;
   if (request.method === "OPTIONS") {
     response.setHeader("Allow", "GET, POST, PATCH, DELETE, OPTIONS");
     return response.status(204).end();

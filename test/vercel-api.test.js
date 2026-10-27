@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
-const path = require("node:path");
 const test = require("node:test");
-const portalApi = require("../api/[...path].js");
+const portalApi = require("../api/index.js");
+const vercelConfig = require("../vercel.json");
 
 function fakeResponse() {
   return {
@@ -44,7 +44,7 @@ test("Vercel API reports missing Neon configuration as JSON without proxying", a
   const response = fakeResponse();
   await portalApi({
     method: "POST",
-    url: "/api/login",
+    url: "/api/index?__api_path=login",
     headers: { host: "jaitinn.site", origin: "https://jaitinn.site" },
     body: { username: "staff", password: "example" }
   }, response);
@@ -65,7 +65,7 @@ test("Vercel API rejects cross-origin state changes", async (t) => {
   const response = fakeResponse();
   await portalApi({
     method: "POST",
-    url: "/api/login",
+    url: "/api/index?__api_path=login",
     headers: { host: "jaitinn.site", origin: "https://attacker.example" },
     body: { username: "staff", password: "example" }
   }, response);
@@ -81,24 +81,30 @@ test("Vercel API handles preflight without requiring a database", async () => {
   assert.equal(response.headers.allow, "GET, POST, PATCH, DELETE, OPTIONS");
 });
 
-test("nested Vercel API entry points dispatch to the shared portal handler", () => {
-  const routes = [
-    "../api/todo-items/bulk.js",
-    "../api/todo-items/[id].js",
-    "../api/tasks/[id].js",
-    "../api/documents/[id].js",
-    "../api/accounts/[id].js",
-    "../api/accounts/[id]/menu.js",
-    "../api/accounts/[id]/unlink-discord.js",
-    "../api/accounts/[id]/reset-password.js",
-    "../api/discord/authorize.js",
-    "../api/discord/callback.js",
-    "../api/roles/[id].js",
-    "../api/payroll/[id].js",
-    "../api/automations/[id].js"
-  ];
+test("Vercel rewrites all API routes to the single shared serverless function", async () => {
+  assert.deepEqual(vercelConfig.rewrites, [{
+    source: "/api/:path*",
+    destination: "/api/index?__api_path=:path*"
+  }]);
 
-  for (const route of routes) {
-    assert.equal(require(path.resolve(__dirname, route)), portalApi, `${route} should export the shared API handler`);
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  const previousPostgresUrl = process.env.POSTGRES_URL;
+  delete process.env.DATABASE_URL;
+  delete process.env.POSTGRES_URL;
+  try {
+    const response = fakeResponse();
+    await portalApi({
+      method: "POST",
+      url: "/api/index?__api_path=todo-items%2Fbulk",
+      headers: { host: "jaitinn.site", origin: "https://jaitinn.site" },
+      body: { items: [] }
+    }, response);
+    assert.equal(response.statusCode, 503);
+    assert.match(response.body.error, /Neon Postgres database/);
+  } finally {
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+    if (previousPostgresUrl === undefined) delete process.env.POSTGRES_URL;
+    else process.env.POSTGRES_URL = previousPostgresUrl;
   }
 });
