@@ -1,0 +1,376 @@
+CARTEL EMPIRE: DOMINION - GAME STAFF PANEL SETUP
+=================================================
+
+WHY THE TAB IS NOT IN YOUR SCREENSHOT
+-------------------------------------
+The screenshot predates the latest published site files. The live jaitinn.site
+homepage now includes the Game Staff Panel navigation item and loads app.js and
+styles.css version 16. Sign in, then hard-refresh with Ctrl+Shift+R. The tab is
+in the left sidebar below "To-do list"; on a narrow screen, scroll the sidebar
+navigation horizontally.
+
+The panel is intentionally a preview. Roblox is not connected, the page has
+no live server/player data, and moderation/announcement controls do nothing.
+Do not enable real moderation until all server-side API and Roblox security
+steps below are implemented and tested.
+
+
+FILES THAT EXIST NOW
+--------------------
+Website repository:
+
+  public/index.html
+    Navigation item and page shell. The Game Staff Panel tab is added here.
+
+  public/app.js
+    Tab selection and preview renderer. The current renderer deliberately
+    displays "Roblox is not connected" and disabled controls.
+
+  public/styles.css
+    Preview styling, matching the existing muted black/gold theme.
+
+  test/integration.test.js
+    Checks that the tab and preview-only messaging are present.
+
+  api/index.js
+    The ONE Vercel API function. Future game API routes must be added here;
+    do not create separate api/game-*.js functions, because this project was
+    consolidated to one function to fit the Vercel Hobby function limit.
+
+  server.js
+    Local SQLite API server. Add the same future routes and database behavior
+    here so local development works the same as production.
+
+Roblox Studio files (create these only when starting the real integration):
+
+  ServerScriptService
+    CartelEmpire (Folder)
+      PortalBridge.server.lua (Script)
+      ModerationService.lua (ModuleScript)
+
+  StarterPlayer
+    StarterPlayerScripts
+      StaffWarning.client.lua (LocalScript, only if using an in-game warning
+      popup)
+
+Never put bridge credentials or moderation authority in a LocalScript,
+ReplicatedStorage, a public website file, or source control. The LocalScript
+is only for displaying a warning sent by the server; it must not decide who
+is staff or perform moderation.
+
+
+WHAT MUST BE IMPLEMENTED BEFORE CONNECTING
+------------------------------------------
+This is a two-way, server-to-server integration. A Roblox server reports its
+current players to the portal. The website sends authenticated commands to
+the game server. Website buttons alone cannot securely perform moderation.
+
+1. Add a dedicated permission named "manageGameStaff".
+   - Add it to the permission allow-list in api/index.js and server.js.
+   - Add a label for it in public/app.js so the Owner can assign it to roles.
+   - Grant it to the Owner by default. Do not give it to every staff member.
+   - Require it on every website endpoint that reads player data or queues an
+     action. Hiding a button in JavaScript is not authorization.
+
+2. Add persistent tables in BOTH database setup paths.
+   Suggested records:
+   - game_servers: server_id, place_id, universe_id, players_json,
+     last_seen_at
+   - game_commands: id, server_id (or broadcast flag), action, target_user_id,
+     reason, status, created_by, created_at, expires_at, completed_at, result
+   - game_audit: id, command_id, staff_user_id, action, target_user_id,
+     reason, result, created_at
+   Expire old heartbeats and unclaimed commands. Do not trust browser-supplied
+   staff names, roles, permissions, or Roblox usernames as identity.
+
+3. Add website API endpoints in api/index.js AND server.js.
+   Browser endpoints must use the existing portal session, CSRF check, and
+   manageGameStaff permission:
+     GET  /api/game-staff/snapshot
+          Returns recent servers, their online players, and recent audit rows.
+     POST /api/game-staff/commands
+          Accepts only an allow-listed action, numeric Roblox user ID, and
+          bounded reason. Stores the command and audit entry.
+   Roblox-only endpoints must verify the shared bridge secret, compare it in
+   constant time, validate the request size and fields, and never accept a
+   portal cookie as Roblox authentication:
+     POST /api/game-bridge/heartbeat
+          Receives server ID, place/universe IDs, and current player IDs/names.
+     POST /api/game-bridge/commands/poll
+          Receives a server ID and returns only unexpired commands addressed
+          to that server or broadcast to all servers.
+     POST /api/game-bridge/commands/result
+          Receives a command ID and success/failure result for the audit log.
+   Rate-limit these routes and use HTTPS. Never return the bridge secret.
+
+4. Update public/app.js to load the snapshot and queue commands using the
+   normal authenticated website API. Keep Roblox-only credentials out of
+   browser requests. Keep controls disabled until the integration is actually
+   installed and configured. Add clear confirmations for kick/ban/announce.
+
+5. Add integration tests for permission denial, missing/invalid bridge token,
+   oversized/invalid requests, expired commands, command result auditing, and
+   the Owner/authorized-role flows. Keep the existing single-function Vercel
+   routing in vercel.json unchanged.
+
+
+ROBLOX SECRET AND HTTP SETUP
+----------------------------
+Use a unique, randomly generated secret with at least 32 random bytes. Do not
+reuse a password, Discord secret, or any value currently in an editor.
+
+1. In Vercel Project Settings > Environment Variables, create:
+     ROBLOX_BRIDGE_TOKEN = <new random secret>
+   Add it to Production and Preview only as needed. Do not commit it to .env,
+   a TXT file, Lua source, or a screenshot.
+
+2. In Roblox Creator Dashboard, open the correct experience's Secrets page and
+   create a secret named:
+     CARTEL_PORTAL_BRIDGE_TOKEN
+   Set its value to the same newly generated secret. Make it available to the
+   production experience. Roblox server code reads it with GetSecret; clients
+   cannot read it.
+
+3. In Roblox Studio, enable Game Settings > Security > Allow HTTP Requests.
+   Publish the experience and test in a private test server first.
+
+4. Use the server-side scripts below for HTTP and moderation. They are a
+   starter for the protocol, not a complete connection by themselves: the
+   matching portal endpoints above must first be implemented. Until then,
+   requests will correctly fail because those routes do not exist.
+
+Starter ServerScriptService/CartelEmpire/PortalBridge.server.lua:
+
+  local HttpService = game:GetService("HttpService")
+  local Players = game:GetService("Players")
+
+  local BASE_URL = "https://jaitinn.site/api/game-bridge"
+  local bridgeToken = HttpService:GetSecret("CARTEL_PORTAL_BRIDGE_TOKEN")
+  local HEARTBEAT_SECONDS = 30
+  local POLL_SECONDS = 5
+
+  local function request(method, path, body)
+      local response = HttpService:RequestAsync({
+          Url = BASE_URL .. path,
+          Method = method,
+          Headers = {
+              ["Content-Type"] = "application/json",
+              ["x-cartel-bridge-token"] = bridgeToken,
+          },
+          Body = body and HttpService:JSONEncode(body) or nil,
+      })
+
+      if not response.Success then
+          error("Portal bridge request failed with HTTP " .. response.StatusCode)
+      end
+
+      if response.Body == "" then
+          return {}
+      end
+
+      return HttpService:JSONDecode(response.Body)
+  end
+
+  local function playerSnapshot()
+      local players = {}
+      for _, player in Players:GetPlayers() do
+          table.insert(players, {
+              userId = player.UserId,
+              name = player.Name,
+              displayName = player.DisplayName,
+          })
+      end
+      return players
+  end
+
+  local function heartbeat()
+      return request("POST", "/heartbeat", {
+          serverId = game.JobId,
+          placeId = game.PlaceId,
+          universeId = game.GameId,
+          players = playerSnapshot(),
+      })
+  end
+
+  local function pollCommands()
+      return request("POST", "/commands/poll", {
+          serverId = game.JobId,
+          placeId = game.PlaceId,
+      })
+  end
+
+  task.spawn(function()
+      while true do
+          local ok, err = pcall(heartbeat)
+          if not ok then
+              warn("Portal heartbeat failed: " .. tostring(err))
+          end
+          task.wait(HEARTBEAT_SECONDS)
+      end
+  end)
+
+  task.spawn(function()
+      while true do
+          local ok, result = pcall(pollCommands)
+          if not ok then
+              warn("Portal command poll failed: " .. tostring(result))
+          elseif result.commands and #result.commands > 0 then
+              warn("Portal returned commands, but the moderation handler is not installed yet.")
+              -- Add the allow-listed handler only after the backend endpoints,
+              -- permission checks, and audit result endpoint have been tested.
+          end
+          task.wait(POLL_SECONDS)
+      end
+  end)
+
+The block above reports server/player presence and polls the future queue. It
+intentionally does NOT execute commands. Do not remove that safeguard by
+adding arbitrary code execution or trusting command strings from a request.
+Before enabling command execution, add this ModuleScript at
+ServerScriptService/CartelEmpire/ModerationService.lua. It accepts only the
+three hard-coded actions, validates the user ID and reason again inside the
+game, and uses Roblox's supported universe ban API for persistent bans.
+
+  local Players = game:GetService("Players")
+  local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+  local warningEvent = ReplicatedStorage:FindFirstChild("StaffWarning")
+  if not warningEvent then
+      warningEvent = Instance.new("RemoteEvent")
+      warningEvent.Name = "StaffWarning"
+      warningEvent.Parent = ReplicatedStorage
+  end
+
+  local ModerationService = {}
+  local MAX_REASON_LENGTH = 300
+
+  local function validate(command)
+      if type(command) ~= "table" then
+          return false, "Invalid command."
+      end
+      if type(command.userId) ~= "number"
+          or command.userId < 1
+          or command.userId % 1 ~= 0 then
+          return false, "Invalid Roblox user ID."
+      end
+      if type(command.reason) ~= "string" then
+          return false, "A reason is required."
+      end
+
+      local reason = string.sub(string.gsub(command.reason, "^%s*(.-)%s*$", "%1"), 1, MAX_REASON_LENGTH)
+      if reason == "" then
+          return false, "A reason is required."
+      end
+      if command.action ~= "warn" and command.action ~= "kick" and command.action ~= "ban" then
+          return false, "Unsupported moderation action."
+      end
+      return true, reason
+  end
+
+  function ModerationService.execute(command)
+      local valid, reason = validate(command)
+      if not valid then
+          return false, reason
+      end
+
+      local player = Players:GetPlayerByUserId(command.userId)
+      if command.action == "warn" then
+          if not player then
+              return false, "Player is not in this server."
+          end
+          warningEvent:FireClient(player, reason)
+          return true, "Warning delivered."
+      end
+
+      if command.action == "kick" then
+          if not player then
+              return false, "Player is not in this server."
+          end
+          player:Kick("Removed by game staff: " .. reason)
+          return true, "Player kicked."
+      end
+
+      local ok, err = pcall(function()
+          Players:BanAsync({
+              UserIds = { command.userId },
+              Duration = -1,
+              DisplayReason = "Banned by game staff.",
+              PrivateReason = reason,
+              ExcludeAltAccounts = false,
+              ApplyToUniverse = true,
+          })
+      end)
+      if not ok then
+          return false, "Roblox ban failed: " .. tostring(err)
+      end
+      if player then
+          player:Kick("Banned by game staff: " .. reason)
+      end
+      return true, "Universe ban applied."
+  end
+
+  return ModerationService
+
+Add this LocalScript at
+StarterPlayer/StarterPlayerScripts/StaffWarning.client.lua. It only displays
+the server-issued warning; it cannot issue moderation commands.
+
+  local Players = game:GetService("Players")
+  local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+  local player = Players.LocalPlayer
+  local warningEvent = ReplicatedStorage:WaitForChild("StaffWarning")
+
+  warningEvent.OnClientEvent:Connect(function(reason)
+      if type(reason) ~= "string" then
+          return
+      end
+
+      local gui = Instance.new("ScreenGui")
+      gui.Name = "StaffWarningNotice"
+      gui.ResetOnSpawn = false
+      gui.Parent = player:WaitForChild("PlayerGui")
+
+      local message = Instance.new("TextLabel")
+      message.AnchorPoint = Vector2.new(0.5, 0)
+      message.Position = UDim2.fromScale(0.5, 0.08)
+      message.Size = UDim2.new(0.8, 0, 0, 64)
+      message.BackgroundColor3 = Color3.fromRGB(28, 25, 24)
+      message.BorderSizePixel = 0
+      message.TextColor3 = Color3.fromRGB(244, 240, 232)
+      message.TextWrapped = true
+      message.Text = "Staff warning: " .. string.sub(reason, 1, 300)
+      message.Parent = gui
+
+      task.delay(8, function()
+          gui:Destroy()
+      end)
+  end)
+
+To turn on handling, update the poll loop in PortalBridge.server.lua to
+require ModerationService, execute every returned command, then POST its
+command ID, server ID, success flag, and result text to
+/commands/result. The website must mark commands claimed/completed atomically
+and record the result in game_audit before this handler is enabled. Keep kick
+and warn targeted to the server that currently contains the player. A ban is
+universe-wide; Roblox BanAsync applies it to future joins as well.
+
+
+SAFE ORDER TO CONNECT EVERYTHING
+--------------------------------
+1. Deploy the website preview and confirm the Game Staff Panel tab appears.
+2. Implement the permission, database tables, endpoints, and tests in both
+   website server paths. Keep controls disabled during this stage.
+3. Create the Vercel and Roblox secrets. Never paste the value into source.
+4. Publish the Roblox heartbeat-only script to a private test server.
+5. Confirm the panel shows live server/player information and marks stale
+   servers offline. Verify an invalid token is rejected and logged safely.
+6. Implement and test one action at a time (warning, kick, then persistent
+   ban), including permissions, confirmation, expiry, server targeting, and
+   audit entries. Test with test accounts, not public players.
+7. Only then enable the matching website controls. Keep the preview message
+   until the real integration is verified.
+
+To find this section after deploying, sign in to the portal, then select
+"Game Staff Panel" from the left navigation. A code push alone does not make
+the section appear until Vercel finishes a successful production deployment.
