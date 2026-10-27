@@ -336,14 +336,14 @@ function renderStaff() {
       <div class="headingActions"><button class="button buttonPrimary" data-action="new-account">＋ Create account</button></div>
     </div>
     <div class="notice">Temporary passwords are shown only once. Share them directly with the intended team member; never post them publicly.</div>
-    <div class="notice">Right-click a staff row or use its Actions button for account tools and the Discord User Menu.</div>
+    <div class="notice">Use the three-dot button on a staff row for account tools and the Discord User Menu.</div>
     <div class="tableWrap"><table><thead><tr><th>Team member</th><th>Role</th><th>Account</th><th>Discord</th><th>Actions</th></tr></thead><tbody>
       ${state.board.staff.map((person) => `<tr data-staff-context="${escapeHtml(person.id)}" tabindex="0">
         <td><span class="personCell"><strong>${escapeHtml(person.displayName)}</strong><small>@${escapeHtml(person.username || "staff")}</small></span></td>
         <td><select aria-label="Staff role" data-account-role="${escapeHtml(person.id)}" ${person.active ? "" : "disabled"}>${state.board.roles.filter((role) => role.id !== "owner").map((role) => `<option value="${escapeHtml(role.id)}" ${person.roleId === role.id ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></td>
         <td><span class="statusPill ${person.active ? "approved" : "rejected"}">${person.active ? "Active" : "Disabled"}</span></td>
         <td><span class="statusPill ${person.discordLinked ? "approved" : "rejected"}">${person.discordLinked ? "Linked" : "Not linked"}</span></td>
-        <td><button class="button buttonSmall" data-action="staff-actions" data-id="${escapeHtml(person.id)}" aria-label="Actions for ${escapeHtml(person.displayName)}">Actions ⋯</button></td>
+        <td><button class="button buttonSmall staffActionsButton" data-action="staff-actions" data-id="${escapeHtml(person.id)}" aria-label="Open actions for ${escapeHtml(person.displayName)}" title="Open staff actions"><span aria-hidden="true">⋮</span></button></td>
       </tr>`).join("") || `<tr><td colspan="5" class="emptyState">No staff accounts yet.</td></tr>`}
     </tbody></table></div>`;
 }

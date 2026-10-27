@@ -135,6 +135,7 @@ tr:last-child td { border-bottom: 0; }
 .statusPill.paid { border-color: #36534d; color: #91c6ba; }
 .statusPill.rejected { border-color: #66403b; color: #e19a8e; }
 .tableActions { display: flex; flex-wrap: wrap; gap: 5px; }
+.staffActionsButton { min-width: 34px; min-height: 32px; justify-content: center; padding: 3px 8px; color: var(--gold-bright); font-size: 19px; line-height: 1; }
 .panelGrid { display: grid; grid-template-columns: minmax(240px, .7fr) minmax(0, 1.3fr); gap: 16px; align-items: start; }
 .panel { padding: 17px; border: 1px solid #2d332e; border-radius: 7px; background: #191c1a; }
 .panel h2 { margin: 0; font: 700 14px "Segoe UI", sans-serif; }
