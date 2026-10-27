@@ -9,12 +9,12 @@ function createPkcePair() {
   return { verifier, challenge };
 }
 
-function authorizationUrl({ clientId, redirectUri, state, challenge }) {
+function authorizationUrl({ clientId, redirectUri, state, challenge, scope = "identify guilds" }) {
   const url = new URL("https://discord.com/oauth2/authorize");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("scope", "identify guilds");
+  url.searchParams.set("scope", scope);
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("code_challenge_method", "S256");
@@ -76,15 +76,28 @@ async function exchangeCode(config, code, verifier) {
   return tokens.access_token;
 }
 
-async function fetchIdentityAndGuilds(accessToken) {
-  const headers = { Authorization: `Bearer ${accessToken}` };
-  const [identity, firstPage] = await Promise.all([
-    discordFetch(`${DISCORD_API}/users/@me`, { headers }),
-    discordFetch(`${DISCORD_API}/users/@me/guilds?limit=200`, { headers })
-  ]);
+async function fetchIdentity(accessToken) {
+  const identity = await discordFetch(`${DISCORD_API}/users/@me`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
   if (typeof identity.id !== "string" || typeof identity.username !== "string") {
     throw new Error("Discord returned an incomplete user profile.");
   }
+  return {
+    id: identity.id,
+    username: identity.discriminator && identity.discriminator !== "0"
+      ? `${identity.username}#${identity.discriminator}`
+      : identity.username,
+    avatar: typeof identity.avatar === "string" ? identity.avatar : null
+  };
+}
+
+async function fetchIdentityAndGuilds(accessToken) {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const [identity, firstPage] = await Promise.all([
+    fetchIdentity(accessToken),
+    discordFetch(`${DISCORD_API}/users/@me/guilds?limit=200`, { headers })
+  ]);
   if (!Array.isArray(firstPage)) throw new Error("Discord returned an invalid server list.");
 
   const guilds = firstPage;
@@ -100,11 +113,7 @@ async function fetchIdentityAndGuilds(accessToken) {
   }
 
   return {
-    id: identity.id,
-    username: identity.discriminator && identity.discriminator !== "0"
-      ? `${identity.username}#${identity.discriminator}`
-      : identity.username,
-    avatar: typeof identity.avatar === "string" ? identity.avatar : null,
+    ...identity,
     guilds: guilds.map((guild) => ({
       id: guild.id,
       name: String(guild.name || "Unknown server").slice(0, 100),
@@ -126,6 +135,7 @@ module.exports = {
   authorizationUrl,
   createPkcePair,
   exchangeCode,
+  fetchIdentity,
   fetchIdentityAndGuilds,
   readConfig,
   snowflakeCreatedAt

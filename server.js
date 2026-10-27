@@ -8,6 +8,7 @@ const {
   authorizationUrl,
   createPkcePair,
   exchangeCode,
+  fetchIdentity,
   fetchIdentityAndGuilds,
   readConfig,
   snowflakeCreatedAt
@@ -407,6 +408,11 @@ function buildBootstrapDb() {
       code_verifier TEXT NOT NULL,
       expires_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS discord_login_states (
+      state_hash TEXT PRIMARY KEY,
+      code_verifier TEXT NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -670,11 +676,12 @@ function requirePasswordChangeDone(user, pathName) {
   }
 }
 
-function redirectResponse(res, location) {
+function redirectResponse(res, location, headers = {}) {
   res.writeHead(303, {
     Location: location,
     "Cache-Control": "no-store",
-    "Referrer-Policy": "no-referrer"
+    "Referrer-Policy": "no-referrer",
+    ...headers
   });
   res.end();
 }
@@ -713,6 +720,24 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (route === "GET /api/discord/login") {
+    const config = readConfig();
+    const state = randomBytes(32).toString("base64url");
+    const { verifier, challenge } = createPkcePair();
+    db.prepare("DELETE FROM discord_login_states WHERE expires_at <= ?").run(Date.now());
+    db.prepare(`
+      INSERT INTO discord_login_states (state_hash, code_verifier, expires_at)
+      VALUES (?, ?, ?)
+    `).run(hashToken(state), verifier, Date.now() + 10 * 60 * 1000);
+    return redirectResponse(res, authorizationUrl({
+      clientId: config.clientId,
+      redirectUri: config.redirectUri,
+      state,
+      challenge,
+      scope: "identify"
+    }));
+  }
+
   if (route === "GET /api/me") {
     const user = currentUser(req);
     requireUser(user);
@@ -739,6 +764,33 @@ async function handleApi(req, res, url) {
     const code = url.searchParams.get("code") || "";
     if (!state) return redirectResponse(res, callbackUrl("invalid"));
     const stateHash = hashToken(state);
+    const loginState = db.prepare(`
+      SELECT code_verifier AS codeVerifier, expires_at AS expiresAt
+      FROM discord_login_states WHERE state_hash = ?
+    `).get(stateHash);
+    if (loginState) {
+      db.prepare("DELETE FROM discord_login_states WHERE state_hash = ?").run(stateHash);
+      if (loginState.expiresAt < Date.now()) return redirectResponse(res, callbackUrl("login-expired"));
+      if (url.searchParams.has("error") || !code) return redirectResponse(res, callbackUrl("login-cancelled"));
+      try {
+        const accessToken = await exchangeCode(config, code, loginState.codeVerifier);
+        const discord = await fetchIdentity(accessToken);
+        const linkedAccount = db.prepare(`
+          SELECT id, active, must_change_password AS mustChangePassword
+          FROM users WHERE discord_id = ?
+        `).get(discord.id);
+        if (!linkedAccount) return redirectResponse(res, callbackUrl("login-not-linked"));
+        if (!linkedAccount.active) return redirectResponse(res, callbackUrl("login-disabled"));
+        if (linkedAccount.mustChangePassword) return redirectResponse(res, callbackUrl("login-password-required"));
+        const session = createSession(linkedAccount.id);
+        return redirectResponse(res, callbackUrl("login"), {
+          "Set-Cookie": sessionCookie(session.token)
+        });
+      } catch (error) {
+        console.error("Discord login failed:", error);
+        return redirectResponse(res, callbackUrl("login-failed"));
+      }
+    }
     const oauthState = db.prepare(`
       SELECT o.user_id AS userId, o.code_verifier AS codeVerifier, o.expires_at AS expiresAt
       FROM discord_oauth_states o

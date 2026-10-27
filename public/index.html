@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#0b0b0d">
   <title>Cartel Empire: Dominion | Staff Portal</title>
   <link rel="icon" type="image/png" href="/cartel-empire-logo.png">
-  <link rel="stylesheet" href="/styles.css?v=10">
+  <link rel="stylesheet" href="/styles.css?v=12">
   <script src="/todo-markdown.js?v=1" defer></script>
-  <script src="/app.js?v=10" defer></script>
+  <script src="/app.js?v=12" defer></script>
 </head>
 <body>
   <main id="loginScreen" class="loginScreen">
@@ -30,6 +30,11 @@
         <p id="loginError" class="formError" role="alert" hidden></p>
         <button class="button buttonPrimary buttonWide" type="submit">Sign in <span aria-hidden="true">→</span></button>
       </form>
+      <div class="loginDivider"><span>OR</span></div>
+      <button class="button discordLoginButton" type="button" data-action="discord-login">
+        <span class="discordGlyph" aria-hidden="true">D</span>
+        Continue with Discord
+      </button>
       <p class="loginFoot">Accounts are issued by the Owner or an HR administrator.</p>
     </section>
     <span class="loginVersion">CARTEL EMPIRE: DOMINION <i>·</i> INTERNAL USE</span>

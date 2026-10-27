@@ -4,6 +4,7 @@ const {
   authorizationUrl,
   createPkcePair,
   exchangeCode,
+  fetchIdentity,
   fetchIdentityAndGuilds,
   readConfig,
   snowflakeCreatedAt
@@ -23,6 +24,13 @@ test("Discord authorization uses identify and guilds with PKCE and a state token
   assert.equal(url.searchParams.get("state"), "random-state");
   assert.equal(url.searchParams.get("code_challenge"), challenge);
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+  assert.equal(new URL(authorizationUrl({
+    clientId: "client-id",
+    redirectUri: "https://portal.example/api/discord/callback",
+    state: "login-state",
+    challenge,
+    scope: "identify"
+  })).searchParams.get("scope"), "identify");
 });
 
 test("Discord config requires a secret and an HTTPS callback URL", () => {
@@ -54,7 +62,7 @@ test("Discord code exchange uses PKCE and guild membership pagination returns co
       return Response.json({ access_token: "mock-access-token" });
     }
     if (url.pathname === "/api/v10/users/@me") {
-      assert.equal(options.headers.Authorization, "Bearer mock-access-token");
+      assert.match(options.headers.Authorization, /^Bearer .+/);
       return Response.json({ id: "175928847299117063", username: "jaiden", discriminator: "0" });
     }
     if (url.pathname === "/api/v10/users/@me/guilds" && !url.searchParams.has("after")) {
@@ -86,6 +94,23 @@ test("Discord code exchange uses PKCE and guild membership pagination returns co
   assert.deepEqual(linked.guilds.at(-1), { id: "201", name: "Last Server", icon: "abc" });
   assert.equal(Object.hasOwn(linked.guilds[0], "permissions"), false);
   assert.equal(requestedUrls.length, 4);
+});
+
+test("Discord login fetches only the linked account identity", async (t) => {
+  const originalFetch = global.fetch;
+  global.fetch = async (input, options) => {
+    assert.equal(new URL(input).pathname, "/api/v10/users/@me");
+    assert.ok(typeof options.headers.Authorization === "string");
+    assert.ok(options.headers.Authorization.startsWith("Bearer "));
+    return Response.json({ id: "175928847299117063", username: "jaiden", discriminator: "0" });
+  };
+  t.after(() => { global.fetch = originalFetch; });
+
+  assert.deepEqual(await fetchIdentity("mock-access-token"), {
+    id: "175928847299117063",
+    username: "jaiden",
+    avatar: null
+  });
 });
 
 test("Discord creation date is derived from the account snowflake", () => {

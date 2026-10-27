@@ -56,7 +56,12 @@ select { cursor: pointer; }
 .buttonDanger { color: var(--red); }
 .buttonQuiet { color: #c8cec5; background: transparent; }
 .formError { margin: 2px 0; color: #f49b8f; font-size: 12px; }
-.loginFoot { margin: 25px 0 0; padding-top: 17px; border-top: 1px solid #2d322d; color: var(--faint); font-size: 11px; line-height: 1.5; text-align: center; }
+.loginDivider { display: flex; align-items: center; gap: 12px; margin: 18px 0 13px; color: var(--faint); font-size: 9px; font-weight: 700; letter-spacing: .14em; }
+.loginDivider::before, .loginDivider::after { height: 1px; flex: 1; background: #373033; content: ""; }
+.discordLoginButton { width: 100%; min-height: 44px; border-color: #494048; background: linear-gradient(135deg, #282229, #1d1a1f); color: #f3edf5; }
+.discordLoginButton:hover { border-color: #7e6887; background: linear-gradient(135deg, #332a37, #231e27); }
+.discordGlyph { display: grid; width: 23px; height: 23px; place-items: center; border-radius: 7px; background: #5865f2; color: #fff; font-size: 13px; font-weight: 800; }
+.loginFoot { margin: 20px 0 0; padding-top: 15px; border-top: 1px solid #342d30; color: var(--faint); font-size: 11px; line-height: 1.5; text-align: center; }
 .loginVersion { position: absolute; bottom: 25px; color: #686e68; font-size: 9px; letter-spacing: .16em; }
 .loginVersion i { padding: 0 7px; color: var(--gold); font-style: normal; }
 

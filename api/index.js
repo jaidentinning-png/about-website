@@ -11,6 +11,7 @@ const {
   authorizationUrl,
   createPkcePair,
   exchangeCode,
+  fetchIdentity,
   fetchIdentityAndGuilds,
   readConfig,
   snowflakeCreatedAt
@@ -147,10 +148,11 @@ function can(user, permission) {
   return user.roleId === "owner" || user.permissions?.[permission] === true;
 }
 
-function redirect(response, location) {
+function redirect(response, location, headers = {}) {
   response.setHeader("Location", location);
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Referrer-Policy", "no-referrer");
+  for (const [name, value] of Object.entries(headers)) response.setHeader(name, value);
   return response.status(303).end();
 }
 
@@ -239,6 +241,9 @@ async function ensureSchema() {
         state_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         session_hash TEXT NOT NULL REFERENCES sessions(token_hash) ON DELETE CASCADE,
         code_verifier TEXT NOT NULL, expires_at BIGINT NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS discord_login_states (
+        state_hash TEXT PRIMARY KEY, code_verifier TEXT NOT NULL, expires_at BIGINT NOT NULL
       )`,
       `CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
@@ -582,6 +587,24 @@ async function handle(request, response) {
       });
     }
 
+    if (request.method === "GET" && path === "/api/discord/login") {
+      const config = readConfig();
+      const state = randomBytes(32).toString("base64url");
+      const { verifier, challenge } = createPkcePair();
+      await sql.query("DELETE FROM discord_login_states WHERE expires_at <= $1", [Date.now()]);
+      await sql.query(
+        "INSERT INTO discord_login_states (state_hash, code_verifier, expires_at) VALUES ($1, $2, $3)",
+        [hash(state), verifier, Date.now() + 10 * 60 * 1000]
+      );
+      return redirect(response, authorizationUrl({
+        clientId: config.clientId,
+        redirectUri: config.redirectUri,
+        state,
+        challenge,
+        scope: "identify"
+      }));
+    }
+
     if (request.method === "GET" && path === "/api/discord/callback") {
       const config = readConfig();
       const callbackUrl = (result) => discordResultUrl(config, result);
@@ -590,6 +613,33 @@ async function handle(request, response) {
       const code = callback.searchParams.get("code") || "";
       if (!state) return redirect(response, callbackUrl("invalid"));
       const stateHash = hash(state);
+      const loginRows = await sql.query(
+        "SELECT code_verifier, expires_at FROM discord_login_states WHERE state_hash = $1",
+        [stateHash]
+      );
+      const loginState = loginRows[0];
+      if (loginState) {
+        await sql.query("DELETE FROM discord_login_states WHERE state_hash = $1", [stateHash]);
+        if (Number(loginState.expires_at) < Date.now()) return redirect(response, callbackUrl("login-expired"));
+        if (callback.searchParams.has("error") || !code) return redirect(response, callbackUrl("login-cancelled"));
+        try {
+          const accessToken = await exchangeCode(config, code, loginState.code_verifier);
+          const discord = await fetchIdentity(accessToken);
+          const linkedAccounts = await sql.query(
+            "SELECT id, active, must_change_password FROM users WHERE discord_id = $1 LIMIT 1",
+            [discord.id]
+          );
+          const linkedAccount = linkedAccounts[0];
+          if (!linkedAccount) return redirect(response, callbackUrl("login-not-linked"));
+          if (!linkedAccount.active) return redirect(response, callbackUrl("login-disabled"));
+          if (linkedAccount.must_change_password) return redirect(response, callbackUrl("login-password-required"));
+          const session = await createSession(linkedAccount.id);
+          return redirect(response, callbackUrl("login"), { "Set-Cookie": setCookie(session.token) });
+        } catch (error) {
+          console.error("Discord login failed:", error);
+          return redirect(response, callbackUrl("login-failed"));
+        }
+      }
       const stateRows = await sql.query(
         `SELECT o.user_id, o.code_verifier, o.expires_at
          FROM discord_oauth_states o JOIN sessions s ON s.token_hash = o.session_hash

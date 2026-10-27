@@ -870,6 +870,10 @@ async function handleClick(event) {
       window.location.assign("/api/discord/authorize");
       return;
     }
+    if (action === "discord-login") {
+      window.location.assign("/api/discord/login");
+      return;
+    }
     if (action === "staff-actions") {
       openStaffActions(staffForId(id));
       return;
@@ -1097,9 +1101,16 @@ document.addEventListener("pointerup", () => {
 (async function initialize() {
   const discordResult = new URLSearchParams(window.location.search).get("discord");
   const discordMessages = {
+    login: "",
+    "login-cancelled": "Discord sign-in was cancelled. You can try again or use your username and password.",
+    "login-failed": "Discord sign-in failed. Please try again or use your username and password.",
+    "login-not-linked": "This Discord account is not linked to a staff account yet. Sign in with your username and password and connect Discord first.",
+    "login-disabled": "This staff account is disabled. Contact an administrator.",
+    "login-password-required": "Finish setting up your account with your temporary password before using Discord sign-in.",
     cancelled: "Discord linking was cancelled. Connect Discord to continue.",
     "already-linked": "That Discord account is already linked to another portal account. Ask the Owner for help.",
-    expired: "The Discord link expired or your portal session ended. Please try again.",
+    "login-expired": "This Discord sign-in expired. Please try again.",
+    expired: "This Discord sign-in or link expired. Please try again.",
     failed: "Discord could not be connected. Please try again or contact the Owner.",
     invalid: "The Discord callback was invalid. Please try linking again."
   };
@@ -1108,10 +1119,14 @@ document.addEventListener("pointerup", () => {
   try {
     await loadCurrentUser();
     if (discordResult === "linked") showToast("Discord connected.");
+    if (discordResult === "login") showToast("Signed in with Discord.");
   } catch (error) {
     setLoggedOut();
-    if (error.message !== "Please log in to continue." && !error.message.includes("log in")) {
-      $("#loginError").textContent = error.message;
+    const loginError = state.discordMessage || (error.message !== "Please log in to continue." && !error.message.includes("log in")
+      ? error.message
+      : "");
+    if (loginError) {
+      $("#loginError").textContent = loginError;
       $("#loginError").hidden = false;
     }
   }

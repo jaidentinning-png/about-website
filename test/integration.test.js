@@ -110,7 +110,7 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   let logs = "";
   const startServer = async (bootstrap = true) => {
     logs = "";
-    child = spawn(process.execPath, ["server.js"], {
+    child = spawn(process.execPath, ["--require", path.join(ROOT, "test-support/discord-fetch-mock.js"), "server.js"], {
       cwd: ROOT,
       env: {
         ...process.env,
@@ -150,11 +150,12 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   assert.equal(homepage.status, 200);
   const homepageHtml = await homepage.text();
   assert.match(homepageHtml, /PRIVATE TEAM ACCESS/);
-  assert.match(homepageHtml, /app\.js\?v=10/);
-  assert.match(homepageHtml, /styles\.css\?v=10/);
+  assert.match(homepageHtml, /app\.js\?v=12/);
+  assert.match(homepageHtml, /styles\.css\?v=12/);
   assert.match(homepageHtml, /cartel-empire-logo\.png/);
+  assert.match(homepageHtml, /Continue with Discord/);
   assert.equal(homepage.headers.get("cache-control"), "no-store");
-  const appScript = await request(base, "/app.js?v=10");
+  const appScript = await request(base, "/app.js?v=12");
   assert.equal(appScript.status, 200);
   assert.equal(appScript.headers.get("cache-control"), "no-store");
   const appScriptText = await appScript.text();
@@ -162,6 +163,7 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   assert.match(appScriptText, /"todo-list":\s*renderTodoList/);
   assert.match(appScriptText, /This portal API route returned 404/);
   assert.match(appScriptText, /staffActionsButton/);
+  assert.match(appScriptText, /discord-login/);
   const logo = await request(base, "/cartel-empire-logo.png");
   assert.equal(logo.status, 200);
   assert.match(logo.headers.get("content-type"), /image\/png/);
@@ -184,11 +186,40 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   assert.equal(discordAuthorizeUrl.origin, "https://discord.com");
   assert.equal(discordAuthorizeUrl.searchParams.get("scope"), "identify guilds");
   assert.equal(discordAuthorizeUrl.searchParams.get("code_challenge_method"), "S256");
+  const unlinkedDiscordLogin = await request(base, "/api/discord/login", { redirect: "manual" });
+  const unlinkedLoginState = new URL(unlinkedDiscordLogin.headers.get("location")).searchParams.get("state");
+  const unlinkedLoginCallback = await request(
+    base,
+    `/api/discord/callback?state=${encodeURIComponent(unlinkedLoginState)}&code=integration-test-code`,
+    { redirect: "manual" }
+  );
+  assert.match(unlinkedLoginCallback.headers.get("location"), /discord=login-not-linked/);
+  assert.equal(sessionCookie(unlinkedLoginCallback), "");
   linkTestDiscord("portalowner", "175928847299117063", [{ id: "123", name: "Team server", icon: null }]);
   const owner = await getSession(base, ownerSession.cookie);
   assert.equal(owner.user.roleId, "owner");
   assert.equal(owner.user.mustChangePassword, false);
   assert.equal(owner.user.discordLinked, true);
+
+  const discordLoginStart = await request(base, "/api/discord/login", { redirect: "manual" });
+  assert.equal(discordLoginStart.status, 303);
+  const discordLoginUrl = new URL(discordLoginStart.headers.get("location"));
+  assert.equal(discordLoginUrl.origin, "https://discord.com");
+  assert.equal(discordLoginUrl.searchParams.get("scope"), "identify");
+  const discordLoginState = discordLoginUrl.searchParams.get("state");
+  assert.ok(discordLoginState);
+  const discordLoginCallback = await request(
+    base,
+    `/api/discord/callback?state=${encodeURIComponent(discordLoginState)}&code=integration-test-code`,
+    { redirect: "manual" }
+  );
+  assert.equal(discordLoginCallback.status, 303);
+  assert.match(discordLoginCallback.headers.get("location"), /discord=login/);
+  const discordLoginCookie = sessionCookie(discordLoginCallback);
+  assert.match(discordLoginCookie, /^ce_session=/);
+  const discordLoggedIn = await getSession(base, discordLoginCookie);
+  assert.equal(discordLoggedIn.user.id, owner.user.id);
+  assert.equal(discordLoggedIn.user.username, "portalowner");
 
   const noCsrf = await request(base, "/api/accounts", {
     method: "POST",
