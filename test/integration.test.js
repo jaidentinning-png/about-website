@@ -150,9 +150,11 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   assert.equal(homepage.status, 200);
   const homepageHtml = await homepage.text();
   assert.match(homepageHtml, /PRIVATE TEAM ACCESS/);
-  assert.match(homepageHtml, /app\.js\?v=9/);
+  assert.match(homepageHtml, /app\.js\?v=10/);
+  assert.match(homepageHtml, /styles\.css\?v=10/);
+  assert.match(homepageHtml, /cartel-empire-logo\.png/);
   assert.equal(homepage.headers.get("cache-control"), "no-store");
-  const appScript = await request(base, "/app.js?v=9");
+  const appScript = await request(base, "/app.js?v=10");
   assert.equal(appScript.status, 200);
   assert.equal(appScript.headers.get("cache-control"), "no-store");
   const appScriptText = await appScript.text();
@@ -160,6 +162,9 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   assert.match(appScriptText, /"todo-list":\s*renderTodoList/);
   assert.match(appScriptText, /This portal API route returned 404/);
   assert.match(appScriptText, /staffActionsButton/);
+  const logo = await request(base, "/cartel-empire-logo.png");
+  assert.equal(logo.status, 200);
+  assert.match(logo.headers.get("content-type"), /image\/png/);
   const markdownScript = await request(base, "/todo-markdown.js?v=1");
   assert.equal(markdownScript.status, 200);
   assert.match(homepageHtml, /todo-markdown\.js\?v=1/);

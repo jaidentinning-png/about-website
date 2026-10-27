@@ -3,20 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#111312">
+  <meta name="theme-color" content="#0b0b0d">
   <title>Cartel Empire: Dominion | Staff Portal</title>
-  <link rel="stylesheet" href="/styles.css?v=9">
+  <link rel="icon" type="image/png" href="/cartel-empire-logo.png">
+  <link rel="stylesheet" href="/styles.css?v=10">
   <script src="/todo-markdown.js?v=1" defer></script>
-  <script src="/app.js?v=9" defer></script>
+  <script src="/app.js?v=10" defer></script>
 </head>
 <body>
   <main id="loginScreen" class="loginScreen">
     <div class="loginBackdrop" aria-hidden="true"></div>
     <a class="brand brandLogin" href="/" aria-label="Cartel Empire: Dominion staff portal">
-      <span class="brandMark">CE</span>
+      <img class="brandMark" src="/cartel-empire-logo.png" alt="">
       <span><strong>Cartel Empire</strong><small>DOMINION STAFF PORTAL</small></span>
     </a>
     <section class="loginCard" aria-labelledby="loginTitle">
+      <img class="loginHeroLogo" src="/cartel-empire-logo.png" alt="Cartel Empire: Dominion">
       <p class="eyebrow">PRIVATE TEAM ACCESS</p>
       <h1 id="loginTitle">Welcome back.</h1>
       <p class="muted">Sign in to your Cartel Empire: Dominion workspace.</p>
@@ -36,7 +38,7 @@
   <div id="portalScreen" class="portalScreen" hidden>
     <aside class="sidebar">
       <a class="brand sideBrand" href="/" aria-label="Cartel Empire: Dominion">
-        <span class="brandMark">CE</span>
+        <img class="brandMark" src="/cartel-empire-logo.png" alt="">
         <span><strong>Cartel Empire</strong><small>DOMINION</small></span>
       </a>
       <div class="workspaceLabel">YOUR WORKSPACE</div>
@@ -58,7 +60,12 @@
 
     <section class="mainArea">
       <header class="topbar">
-        <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="currentSection">Work board</strong></div>
+        <div class="topbarIdentity">
+          <a class="brand topbarBrand" href="/" aria-label="Cartel Empire: Dominion">
+            <img class="brandMark" src="/cartel-empire-logo.png" alt="">
+          </a>
+          <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="currentSection">Work board</strong></div>
+        </div>
         <div class="topbarRight">
           <div class="userBadge"><span id="avatarInitials" class="avatar">CE</span><span><strong id="userDisplayName"></strong><small id="userRole"></small></span></div>
           <button class="button buttonSmall buttonQuiet" type="button" data-action="change-password">Password</button>

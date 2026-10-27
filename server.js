@@ -1282,6 +1282,7 @@ async function handleApi(req, res, url) {
 const PUBLIC_FILES = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
+  ["/cartel-empire-logo.png", ["cartel-empire-logo.png", "image/png"]],
   ["/styles.css", ["styles.css", "text/css; charset=utf-8"]],
   ["/todo-markdown.js", ["todo-markdown.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]]
