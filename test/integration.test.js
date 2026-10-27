@@ -150,12 +150,12 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   assert.equal(homepage.status, 200);
   const homepageHtml = await homepage.text();
   assert.match(homepageHtml, /PRIVATE TEAM ACCESS/);
-  assert.match(homepageHtml, /app\.js\?v=12/);
-  assert.match(homepageHtml, /styles\.css\?v=12/);
+  assert.match(homepageHtml, /app\.js\?v=13/);
+  assert.match(homepageHtml, /styles\.css\?v=13/);
   assert.match(homepageHtml, /cartel-empire-logo\.png/);
   assert.match(homepageHtml, /Continue with Discord/);
   assert.equal(homepage.headers.get("cache-control"), "no-store");
-  const appScript = await request(base, "/app.js?v=12");
+  const appScript = await request(base, "/app.js?v=13");
   assert.equal(appScript.status, 200);
   assert.equal(appScript.headers.get("cache-control"), "no-store");
   const appScriptText = await appScript.text();
