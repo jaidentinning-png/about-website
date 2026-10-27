@@ -150,12 +150,12 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   assert.equal(homepage.status, 200);
   const homepageHtml = await homepage.text();
   assert.match(homepageHtml, /PRIVATE TEAM ACCESS/);
-  assert.match(homepageHtml, /app\.js\?v=13/);
-  assert.match(homepageHtml, /styles\.css\?v=13/);
+  assert.match(homepageHtml, /app\.js\?v=14/);
+  assert.match(homepageHtml, /styles\.css\?v=14/);
   assert.match(homepageHtml, /cartel-empire-logo\.png/);
   assert.match(homepageHtml, /Continue with Discord/);
   assert.equal(homepage.headers.get("cache-control"), "no-store");
-  const appScript = await request(base, "/app.js?v=13");
+  const appScript = await request(base, "/app.js?v=14");
   assert.equal(appScript.status, 200);
   assert.equal(appScript.headers.get("cache-control"), "no-store");
   const appScriptText = await appScript.text();
@@ -164,6 +164,9 @@ test("private portal supports accounts, documents, tasks, and Robux rewards", as
   assert.match(appScriptText, /This portal API route returned 404/);
   assert.match(appScriptText, /staffActionsButton/);
   assert.match(appScriptText, /discord-login/);
+  const styles = await request(base, "/styles.css?v=14");
+  assert.equal(styles.status, 200);
+  assert.match(await styles.text(), /\.loginBackdrop \{[^}]*pointer-events: none;/);
   const logo = await request(base, "/cartel-empire-logo.png");
   assert.equal(logo.status, 200);
   assert.match(logo.headers.get("content-type"), /image\/png/);
