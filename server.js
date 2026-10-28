@@ -514,6 +514,36 @@ function buildBootstrapDb() {
     CREATE INDEX IF NOT EXISTS promotions_active_idx ON promotions(active, created_at DESC);
     CREATE INDEX IF NOT EXISTS tickets_status_idx ON tickets(status, created_at DESC);
     CREATE INDEX IF NOT EXISTS ticket_messages_ticket_idx ON ticket_messages(ticket_id, created_at);
+    CREATE TABLE IF NOT EXISTS chat_servers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      owner_id TEXT NOT NULL REFERENCES users(id),
+      icon TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS chat_channels (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL REFERENCES chat_servers(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'text' CHECK(kind IN ('text','announcement')),
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS chat_members (
+      server_id TEXT NOT NULL REFERENCES chat_servers(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('owner','admin','member')),
+      joined_at TEXT NOT NULL,
+      PRIMARY KEY(server_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS chat_messages_channel_idx ON chat_messages(channel_id, created_at DESC);
   `);
   const userColumns = new Set(db.prepare("PRAGMA table_info(users)").all().map((column) => column.name));
   if (!userColumns.has("discord_id")) db.exec("ALTER TABLE users ADD COLUMN discord_id TEXT");
@@ -987,6 +1017,60 @@ async function handleApi(req, res, url) {
       console.error("Discord OAuth callback failed:", error);
       return redirectResponse(res, callbackUrl("failed"));
     }
+  }
+
+  if (url.pathname === "/api/chat/bootstrap" && req.method === "POST") {
+    const user = currentUser(req);
+    requireUser(user);
+    requirePasswordChangeDone(user, url.pathname);
+    checkCsrf(req, user);
+    let server = db.prepare("SELECT id,name,icon,owner_id AS ownerId,created_at AS createdAt FROM chat_servers WHERE owner_id=? ORDER BY created_at LIMIT 1").get(user.id);
+    if (!server) {
+      const now = new Date().toISOString();
+      const serverId = randomUUID();
+      db.prepare("INSERT INTO chat_servers (id,name,owner_id,icon,created_at) VALUES (?,?,?,?,?)").run(serverId, `${user.displayName || user.username}'s Community`, user.id, "", now);
+      db.prepare("INSERT INTO chat_members (server_id,user_id,role,joined_at) VALUES (?,?,?,?)").run(serverId, user.id, "owner", now);
+      db.prepare("INSERT INTO chat_channels (id,server_id,name,kind,position,created_at) VALUES (?,?,?,?,?,?)").run(randomUUID(), serverId, "general", "text", 0, now);
+      db.prepare("INSERT INTO chat_channels (id,server_id,name,kind,position,created_at) VALUES (?,?,?,?,?,?)").run(randomUUID(), serverId, "announcements", "announcement", 1, now);
+      server = db.prepare("SELECT id,name,icon,owner_id AS ownerId,created_at AS createdAt FROM chat_servers WHERE id=?").get(serverId);
+    } else {
+      db.prepare("INSERT OR IGNORE INTO chat_members (server_id,user_id,role,joined_at) VALUES (?,?,?,?)").run(server.id, user.id, "owner", server.createdAt);
+    }
+    const channels = db.prepare("SELECT id,name,kind,position FROM chat_channels WHERE server_id=? ORDER BY position,name").all(server.id);
+    const members = db.prepare(`SELECT u.id,u.username,u.display_name AS displayName,u.discord_avatar AS avatar,cm.role
+      FROM chat_members cm JOIN users u ON u.id=cm.user_id WHERE cm.server_id=? ORDER BY cm.joined_at`).all(server.id);
+    json(res, 200, { server, channels, members });
+    return;
+  }
+
+  if (url.pathname === "/api/chat/messages" && req.method === "GET") {
+    const user = currentUser(req);
+    requireUser(user);
+    const channelId = String(url.searchParams.get("channelId") || "");
+    const channel = db.prepare("SELECT c.*,cm.user_id AS memberId FROM chat_channels c JOIN chat_members cm ON cm.server_id=c.server_id WHERE c.id=? AND cm.user_id=? LIMIT 1").get(channelId, user.id);
+    if (!channel) fail(404, "Channel not found.");
+    const messages = db.prepare(`SELECT m.id,m.content,m.created_at AS createdAt,u.id AS userId,u.username,u.display_name AS displayName,u.discord_avatar AS avatar
+      FROM chat_messages m JOIN users u ON u.id=m.user_id WHERE m.channel_id=? ORDER BY m.created_at DESC LIMIT 100`).all(channelId).reverse();
+    json(res, 200, { messages });
+    return;
+  }
+
+  if (url.pathname === "/api/chat/messages" && req.method === "POST") {
+    const user = currentUser(req);
+    requireUser(user);
+    requirePasswordChangeDone(user, url.pathname);
+    checkCsrf(req, user);
+    const body = await readJson(req);
+    const channelId = normalizeText(body.channelId, 100);
+    const content = normalizeText(body.content, 4000);
+    const channel = db.prepare("SELECT c.id FROM chat_channels c JOIN chat_members cm ON cm.server_id=c.server_id WHERE c.id=? AND cm.user_id=? LIMIT 1").get(channelId, user.id);
+    if (!channel) fail(404, "Channel not found.");
+    if (!content) fail(400, "Message cannot be empty.");
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    db.prepare("INSERT INTO chat_messages (id,channel_id,user_id,content,created_at) VALUES (?,?,?,?,?)").run(id, channelId, user.id, content, now);
+    json(res, 201, { message: { id, userId: user.id, username: user.username, displayName: user.displayName, avatar: null, content, createdAt: now } });
+    return;
   }
 
   if (route === "POST /api/logout") {
